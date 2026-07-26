@@ -11,12 +11,12 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Brida</title>
-<meta name="theme-color" content="#141C26">
+<meta name="theme-color" content="#17161B">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <style>${css}</style>
-<style>html,body,#root{margin:0;min-height:100%;background:#141C26}</style>
+<style>html,body,#root{margin:0;min-height:100%;background:#17161B}</style>
 </head>
 <body>
 <noscript>Esta app necesita JavaScript.</noscript>

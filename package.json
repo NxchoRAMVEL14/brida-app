@@ -1,7 +1,7 @@
 {
   "name": "brida",
   "version": "1.0.0",
-  "description": "Brida — gestión comercial multiusuario con cartera compartida y roles",
+  "description": "PWA de gestion comercial: pendientes, tiempo, pipeline, metas y comisiones",
   "scripts": {
     "build": "bash build.sh"
   },

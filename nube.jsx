@@ -102,6 +102,14 @@ const TAREA = traductor(
 const TIEMPO = traductor(
   { fecha: "fecha", categoria: "categoria", cliente: "cliente", minutos: "minutos" }
 );
+const CLIENTE = traductor(
+  { nombre: "nombre", tipo: "tipo", giro: "giro", plaza: "plaza", rfc: "rfc",
+    direccion: "direccion", estado: "estado", notas: "notas" }
+);
+const CONTACTO = traductor(
+  { clienteId: "cliente_id", nombre: "nombre", puesto: "puesto", telefono: "telefono",
+    correo: "correo", whatsapp: "whatsapp", rolDecision: "rol_decision", notas: "notas" }
+);
 
 function visitaAFila(v) {
   const f = {
@@ -140,15 +148,17 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 // ═══════════════════════ LECTURA (nube → bloque) ═════════════════
 // Devuelve { data: <bloque como lo espera la app>, actualizado }.
 export async function leerNube(uid) {
-  const [ropp, rvis, rtar, rtie, rmet, raju] = await Promise.all([
+  const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, raju] = await Promise.all([
     sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false }),
     sb.from("visitas").select("*").order("fecha", { ascending: false }),
     sb.from("tareas").select("*").order("fecha", { ascending: true }),
     sb.from("tiempo").select("*").order("fecha", { ascending: false }),
     sb.from("metas").select("*").order("creada", { ascending: true }),
+    sb.from("clientes").select("*").order("actualizada", { ascending: false }),
+    sb.from("contactos").select("*").order("creada", { ascending: true }),
     sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle(),
   ]);
-  for (const r of [ropp, rvis, rtar, rtie, rmet]) if (r.error) throw r.error;
+  for (const r of [ropp, rvis, rtar, rtie, rmet, rcli, rcon]) if (r.error) throw r.error;
   if (raju.error) throw raju.error;
 
   const metas = { corto: [], mediano: [], largo: [] };
@@ -165,6 +175,8 @@ export async function leerNube(uid) {
     tareas: rtar.data.map(TAREA.aApp),
     tiempo: rtie.data.map(TIEMPO.aApp),
     metas,
+    clientes: rcli.data.map(CLIENTE.aApp),
+    contactos: rcon.data.map(CONTACTO.aApp),
     mejoras: aj.mejoras || [],
     timer: aj.timer || null,
     tipoCambio: aj.tipo_cambio ?? 17,
@@ -234,6 +246,24 @@ export async function subirNube(uid, estado) {
     if (error) throw error;
   }
   await borrarFaltantes("metas", "user_id", uid, filasMetas.map((m) => m.id));
+
+  // — CLIENTES (upsert + borrar faltantes) —
+  const clis = estado.clientes || [];
+  if (clis.length) {
+    const filas = clis.map((c) => ({ ...CLIENTE.aFila(c), id: c.id }));
+    const { error } = await sb.from("clientes").upsert(filas, { onConflict: "id" });
+    if (error) throw error;
+  }
+  await borrarFaltantes("clientes", "vendedor_id", uid, clis.map((c) => c.id));
+
+  // — CONTACTOS (después de clientes por la relación cliente_id) —
+  const cons = estado.contactos || [];
+  if (cons.length) {
+    const filas = cons.map((c) => ({ ...CONTACTO.aFila(c), id: c.id }));
+    const { error } = await sb.from("contactos").upsert(filas, { onConflict: "id" });
+    if (error) throw error;
+  }
+  await borrarFaltantes("contactos", "vendedor_id", uid, cons.map((c) => c.id));
 
   // — AJUSTES (cronómetro, tipo de cambio, ideas de mejora) —
   const { error: eaj } = await sb.from("ajustes").upsert({

@@ -2,22 +2,23 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
+const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX } from "./xlsx.jsx";
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
-  bezel: "#141C26",   // acero oscuro (bisel superior e inferior)
-  bezel2: "#1E2A38",
-  fondo: "#E9EDF1",   // lienzo gris HMI
+  bezel: "#17161B",   // negro (bisel superior e inferior)
+  bezel2: "#28262E",
+  fondo: "#ECEDEF",   // lienzo gris HMI
   panel: "#F8FAFC",
   borde: "#CBD5DE",
-  tinta: "#182430",
+  tinta: "#181619",
   dim: "#5E6E7E",
-  ambar: "#DE9B10", ambarBg: "#FBF2DC",   // atención
+  ambar: "#E23B3B", ambarBg: "#FBE9E9",   // acento rojo (color de marca)
   rojo: "#C94848", rojoBg: "#F9E9E9",     // falla / vencido
   verde: "#2F9467", verdeBg: "#E5F2EC",   // OK / ganado
   azul: "#3D74B8", azulBg: "#E8F0F8",     // info
@@ -82,7 +83,7 @@ const descargar = (nombre, contenido, tipo = "text/csv;charset=utf-8;") => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
+const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
 const RESULTADOS = [
   { id: "pendiente", label: "Pendiente", color: "#5E6E7E" },
   { id: "interes", label: "Interés", color: "#3D74B8" },
@@ -92,6 +93,23 @@ const RESULTADOS = [
   { id: "reagendar", label: "Reagendar", color: "#7C5FB8" },
 ];
 const resultadoDe = (id) => RESULTADOS.find((r) => r.id === id) || RESULTADOS[0];
+const TIPOS_CLIENTE = [
+  { id: "integrador", label: "Integrador" },
+  { id: "oem", label: "OEM" },
+  { id: "industria", label: "Industria" },
+  { id: "publico", label: "Público" },
+];
+const ESTADOS_CLIENTE = [
+  { id: "prospecto", label: "Prospecto", color: "#3D74B8" },
+  { id: "activo", label: "Activo", color: "#2F9467" },
+  { id: "dormido", label: "Dormido", color: "#5E6E7E" },
+];
+const ROLES_DECISION = [
+  { id: "decide", label: "Decide" },
+  { id: "influye", label: "Influye" },
+  { id: "usa", label: "Usa" },
+  { id: "paga", label: "Paga" },
+];
 
 /* ── Google Calendar (URL pre-llenada) ────────────────────────────── */
 const masMinutos = (hhmm, mins) => {
@@ -114,6 +132,30 @@ const abrirGCal = ({ titulo, fecha, horaInicio, fechaFin, horaFin, detalles }) =
   window.open(url, "_blank", "noopener");
 };
 const textoTarea = (t) => `${t.titulo}${t.fecha ? ` · ${fFecha(t.fecha)}` : ""}${t.horaInicio ? ` ${t.horaInicio}` : ""}${t.horaFin ? `–${t.horaFin}` : ""}${t.cliente ? ` · ${t.cliente}` : ""}`;
+const montoTexto = (o) => o.moneda === "USD" && o.montoOrig ? `US$${nfEnteros.format(o.montoOrig)} (${fMXN(o.monto || 0)})` : fMXN(o.monto || 0);
+function mensajeEstatus(vendedor, lista) {
+  const saludo = vendedor ? `Hola ${vendedor} 👋` : "Hola 👋";
+  const enc = lista.length === 1 ? "esta oportunidad" : `estas ${lista.length} oportunidades`;
+  let t = `${saludo}\n\n¿Me apoyas con el estatus de ${enc}? Con un comentario breve en cada renglón "Estatus" me sirve. ¡Gracias!\n`;
+  lista.forEach((o, i) => {
+    t += `\n${i + 1}) ${o.cliente}${o.titulo ? " — " + o.titulo : ""}`;
+    t += `\n   💰 ${montoTexto(o)}  ·  📌 ${etapa(o.etapa).label}`;
+    const ref = [o.numCotizacion ? `Cot ${o.numCotizacion}` : "", o.fechaCotizacion ? fFecha(o.fechaCotizacion) : "", o.marca || "", o.plaza || ""].filter(Boolean).join(" · ");
+    if (ref) t += `\n   📄 ${ref}`;
+    const nums = [o.ocCliente ? `OC ${o.ocCliente}` : "", o.numPedido ? `Pedido ${o.numPedido}` : "", o.numFactura ? `Factura ${o.numFactura}` : ""].filter(Boolean).join(" · ");
+    if (nums) t += `\n   🧾 ${nums}`;
+    if (o.proximaAccion) t += `\n   📝 Pendiente: ${o.proximaAccion}${o.fechaAccion ? ` (${fFecha(o.fechaAccion)})` : ""}`;
+    t += `\n   → Estatus: __________`;
+    t += `\n`;
+  });
+  return t;
+}
+const abrirWhatsApp = (texto) => window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+async function enviarTexto(texto) {
+  if (navigator.share) { try { await navigator.share({ text: texto }); return "share"; } catch { return "cancel"; } }
+  try { await navigator.clipboard.writeText(texto); return "copy"; } catch { return "err"; }
+}
+async function copiarTexto(texto) { try { await navigator.clipboard.writeText(texto); return true; } catch { return false; } }
 const compartirTexto = async (titulo, texto) => {
   if (navigator.share) { try { await navigator.share({ title: titulo, text: texto }); } catch (e) {} return; }
   try { await navigator.clipboard.writeText(texto); window.alert("Copiado al portapapeles (tu navegador no tiene menú Compartir)."); } catch (e) {}
@@ -380,7 +422,7 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
               <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
               <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6 caracteres)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
               {msg ? <div className="text-xs" style={{ color: msg.includes("creada") ? "#2F9467" : C.rojo }}>{msg}</div> : null}
-              <button onClick={enviar} disabled={cargando} className="w-full py-3 rounded-xl font-semibold" style={{ background: C.ambar, color: C.bezel, opacity: cargando ? 0.6 : 1 }}>{cargando ? "Un momento…" : modo === "entrar" ? "Entrar" : "Crear cuenta y entrar"}</button>
+              <button onClick={enviar} disabled={cargando} className="w-full py-3 rounded-xl font-semibold" style={{ background: C.ambar, color: "#fff", opacity: cargando ? 0.6 : 1 }}>{cargando ? "Un momento…" : modo === "entrar" ? "Entrar" : "Crear cuenta y entrar"}</button>
               <div className="text-xs" style={{ color: C.dim }}>Consejo: la primera vez, entra en el dispositivo que ya tiene tus datos; esa siembra la nube. Antes de todo, exporta un respaldo en Cierre por seguridad.</div>
             </div>
           )}
@@ -395,20 +437,8 @@ function VisitaEditor({ visita, opps, onGuardar, onEliminar, onCheckin, onCerrar
   const [d, setD] = useState({
     fecha: visita.fecha || hoy(), hora: visita.hora || "", fechaFin: visita.fechaFin || "", horaFin: visita.horaFin || "", cliente: visita.cliente || "",
     oppId: visita.oppId || "", notas: visita.notas || "", resultado: visita.resultado || "pendiente",
-    foto: visita.foto || "", checkin: visita.checkin || null,
+    checkin: visita.checkin || null,
   });
-  const onFoto = (ev) => {
-    const f = ev.target.files && ev.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => { const img = new Image(); img.onload = () => {
-      const max = 1000; let w = img.width, h = img.height;
-      if (w > max || h > max) { const r = Math.min(max / w, max / h); w = Math.round(w * r); h = Math.round(h * r); }
-      const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-      cv.getContext("2d").drawImage(img, 0, 0, w, h);
-      setD((x) => ({ ...x, foto: cv.toDataURL("image/jpeg", 0.6) }));
-    }; img.src = rd.result; };
-    rd.readAsDataURL(f); ev.target.value = "";
-  };
   const oppSel = opps.find((o) => o.id === d.oppId);
   const cliente = d.cliente || (oppSel ? oppSel.cliente : "");
   return (
@@ -456,7 +486,7 @@ function VisitaEditor({ visita, opps, onGuardar, onEliminar, onCheckin, onCerrar
                 </div>
               </div>
             ) : (
-              <button onClick={() => onCheckin((ck) => setD((x) => ({ ...x, checkin: ck })))} className="w-full py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: C.bezel }}>
+              <button onClick={() => onCheckin((ck) => setD((x) => ({ ...x, checkin: ck })))} className="w-full py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}>
                 <MapPin size={16} /> Check-in — Estoy aquí
               </button>
             )}
@@ -474,22 +504,9 @@ function VisitaEditor({ visita, opps, onGuardar, onEliminar, onCheckin, onCerrar
 
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} rows={3} placeholder="Notas de la visita, acuerdos, siguientes pasos…" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
 
-          <div>
-            {d.foto ? (
-              <div className="relative">
-                <img src={d.foto} alt="Foto de la visita" className="w-full rounded-xl border" style={{ borderColor: C.borde, maxHeight: 220, objectFit: "cover" }} />
-                <button onClick={() => setD({ ...d, foto: "" })} className="absolute top-2 right-2 rounded-lg px-2 py-1 text-xs font-semibold" style={{ background: "rgba(20,28,38,0.75)", color: "#fff" }}>Quitar foto</button>
-              </div>
-            ) : (
-              <label className="w-full rounded-xl border border-dashed px-3 py-4 flex items-center justify-center gap-2 text-sm font-semibold" style={{ borderColor: C.borde, color: C.dim, background: C.panel, cursor: "pointer" }}>
-                <Camera size={17} /> Agregar foto del lugar
-                <input type="file" accept="image/*" capture="environment" onChange={onFoto} className="hidden" />
-              </label>
-            )}
-          </div>
 
           <div className="flex gap-2 pt-1">
-            <button onClick={() => (cliente || "").trim() && onGuardar({ ...visita, ...d, cliente })} className="flex-1 py-3 rounded-xl font-semibold" style={{ background: (cliente || "").trim() ? C.tinta : C.borde, color: "#fff" }}>{nueva ? "Guardar visita" : "Guardar cambios"}</button>
+            <button onClick={() => (cliente || "").trim() && onGuardar({ ...visita, ...d, cliente, foto: undefined })} className="flex-1 py-3 rounded-xl font-semibold" style={{ background: (cliente || "").trim() ? C.tinta : C.borde, color: "#fff" }}>{nueva ? "Guardar visita" : "Guardar cambios"}</button>
             {!nueva ? <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button> : null}
           </div>
         </div>
@@ -517,10 +534,9 @@ function VisitasSheet({ visitas, opps, onNueva, onEditar, onCheckin, onCerrar })
           {v.checkin ? (
             <div className="text-xs mt-1.5 flex items-center gap-1" style={{ color: "#1F7A55" }}><Check size={12} /> Llegaste a las {new Date(v.checkin.hora).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · ±{v.checkin.precision} m</div>
           ) : null}
-          {v.foto ? <div className="text-xs mt-1 flex items-center gap-1" style={{ color: C.dim }}><Camera size={11} /> con foto</div> : null}
         </button>
         {esHoy && !v.checkin ? (
-          <button onClick={() => onCheckin(v.id)} className="w-full mt-2.5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: C.bezel }}>
+          <button onClick={() => onCheckin(v.id)} className="w-full mt-2.5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}>
             <MapPin size={16} /> Check-in — Estoy aquí
           </button>
         ) : null}
@@ -548,6 +564,79 @@ function VisitasSheet({ visitas, opps, onNueva, onEditar, onCheckin, onCerrar })
             <Sec>Anteriores y próximas · {otras.length}</Sec>
             <div className="space-y-2">{otras.map((v) => <Tarjeta key={v.id} v={v} hoy={false} />)}</div>
           </>) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SeguimientoSheet({ opps, onCerrar }) {
+  const [excl, setExcl] = useState({});
+  const [abierto, setAbierto] = useState(null);
+  const [aviso, setAviso] = useState("");
+  const grupos = useMemo(() => {
+    const g = {};
+    opps.filter((o) => !["facturado", "perdido"].includes(o.etapa)).forEach((o) => {
+      const v = (o.vendedor || "").trim() || "— Sin vendedor asignado";
+      (g[v] = g[v] || []).push(o);
+    });
+    Object.values(g).forEach((arr) => arr.sort((a, b) => (b.monto || 0) - (a.monto || 0)));
+    return g;
+  }, [opps]);
+  const nombres = Object.keys(grupos).sort((a, b) => (a.startsWith("—") ? 1 : b.startsWith("—") ? -1 : a.localeCompare(b)));
+  const sel = (arr) => arr.filter((o) => !excl[o.id]);
+  const nom = (v) => (v.startsWith("—") ? "" : v);
+  const flash = (m) => { setAviso(m); setTimeout(() => setAviso(""), 1800); };
+  const enviar = async (modo, v, arr) => {
+    const lista = sel(arr); if (!lista.length) { flash("Selecciona al menos una."); return; }
+    const texto = mensajeEstatus(nom(v), lista);
+    if (modo === "wa") abrirWhatsApp(texto);
+    else if (modo === "share") { const r = await enviarTexto(texto); if (r === "copy") flash("Copiado al portapapeles"); }
+    else { if (await copiarTexto(texto)) flash("Copiado al portapapeles"); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Send size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Seguimiento a vendedores</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="text-xs" style={{ color: C.dim }}>Pide a cada vendedor el estatus de sus oportunidades en curso. Elige cuáles incluir y envía por WhatsApp o compártelo; el mensaje va formateado con un renglón «Estatus» para que respondan fácil.</div>
+          {nombres.length === 0 ? <Vacio>No hay oportunidades en curso. Cuando tengas oportunidades activas con vendedor asignado, aparecerán aquí agrupadas.</Vacio> : null}
+          {nombres.map((v) => {
+            const arr = grupos[v]; const n = sel(arr).length;
+            const prev = mensajeEstatus(nom(v), sel(arr));
+            return (
+              <div key={v} className="rounded-xl border" style={{ borderColor: C.borde, background: C.panel }}>
+                <div className="px-3 pt-3 pb-2 flex items-center justify-between">
+                  <div className="font-semibold text-sm flex items-center gap-1.5" style={{ color: v.startsWith("—") ? C.dim : C.tinta }}><User size={13} style={{ color: C.dim }} />{v.startsWith("—") ? "Sin vendedor asignado" : v}</div>
+                  <span className="text-xs" style={{ ...mono, color: C.dim }}>{n} de {arr.length}</span>
+                </div>
+                <div className="px-3 pb-2 space-y-1">
+                  {arr.map((o) => (
+                    <label key={o.id} className="flex items-start gap-2 py-1 cursor-pointer">
+                      <input type="checkbox" checked={!excl[o.id]} onChange={() => setExcl((x) => ({ ...x, [o.id]: !x[o.id] }))} className="mt-0.5" style={{ accentColor: C.ambar }} />
+                      <span className="text-xs leading-snug" style={{ color: C.tinta }}>
+                        <span className="font-semibold">{o.cliente}</span>{o.titulo ? ` — ${o.titulo}` : ""}
+                        <span style={{ ...mono, color: C.dim }}> · {montoTexto(o)} · {etapa(o.etapa).label}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={() => setAbierto(abierto === v ? null : v)} className="px-3 pb-1 text-xs font-semibold flex items-center gap-1" style={{ color: C.azul }}>
+                  <ChevronDown size={13} style={{ transform: abierto === v ? "rotate(180deg)" : "none" }} /> {abierto === v ? "Ocultar mensaje" : "Ver mensaje"}
+                </button>
+                {abierto === v ? <pre className="mx-3 mb-2 p-2 rounded-lg text-xs whitespace-pre-wrap" style={{ ...mono, background: "#fff", border: `1px solid ${C.borde}`, color: C.tinta }}>{prev || "(sin oportunidades seleccionadas)"}</pre> : null}
+                <div className="grid grid-cols-3 gap-2 p-3 pt-1">
+                  <button onClick={() => enviar("share", v, arr)} className="py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1" style={{ background: C.ambar, color: "#fff" }}><Share2 size={13} /> Compartir</button>
+                  <button onClick={() => enviar("wa", v, arr)} className="py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1" style={{ background: "#25D366", color: "#0B3D24" }}><MessageSquare size={13} /> WhatsApp</button>
+                  <button onClick={() => enviar("copy", v, arr)} className="py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 border" style={{ borderColor: C.borde, color: C.tinta }}><Copy size={13} /> Copiar</button>
+                </div>
+              </div>
+            );
+          })}
+          {aviso ? <div className="fixed left-1/2 -translate-x-1/2 bottom-6 px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: C.bezel, color: "#fff" }}>{aviso}</div> : null}
         </div>
       </div>
     </div>
@@ -660,12 +749,117 @@ function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc }) {
             ) : null}
           </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas y acuerdos de visita" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          {!nueva && d.cliente.trim() ? (
+            <button onClick={() => enviarTexto(mensajeEstatus((d.vendedor || "").trim(), [{ ...opp, ...d, monto: d.moneda === "USD" && d.monto ? Math.round(Number(d.monto) * (tc || 0)) : (d.monto === "" ? null : Number(d.monto)) }]))} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, color: "#2C5A8F", background: C.azulBg }}>
+              <Send size={15} /> Pedir estatus al vendedor
+            </button>
+          ) : null}
           <div className="flex gap-2 pt-1">
             <button onClick={() => d.cliente.trim() && onGuardar({ ...opp, ...d, monto: d.monto === "" ? null : (d.moneda === "USD" ? Math.round(Number(d.monto) * (tc || 0)) : Number(d.monto)), moneda: d.moneda, montoOrig: d.moneda === "USD" && d.monto !== "" ? Number(d.monto) : null, tcCaptura: d.moneda === "USD" ? (tc || null) : null, margen: d.margen === "" ? null : Number(d.margen) })}
               className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>
               {nueva ? "Crear oportunidad" : "Guardar cambios"}
             </button>
             {!nueva && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Editor de Cliente (con sus contactos) ────────────────────────── */
+function ClienteEditor({ cliente, contactos, opps, onGuardar, onEliminar, onCerrar }) {
+  const nuevo = !cliente.id;
+  const [d, setD] = useState({
+    nombre: cliente.nombre || "", tipo: cliente.tipo || "", estado: cliente.estado || "prospecto",
+    plaza: cliente.plaza || "", giro: cliente.giro || "", rfc: cliente.rfc || "",
+    direccion: cliente.direccion || "", notas: cliente.notas || "",
+  });
+  const [cts, setCts] = useState(() => (contactos || []).filter((c) => c.clienteId === cliente.id).map((c) => ({ ...c })));
+  const relacionadas = (opps || []).filter((o) => cliente.nombre && (o.cliente || "").trim().toLowerCase() === (cliente.nombre || "").trim().toLowerCase());
+  const addContacto = () => setCts([...cts, { id: uid(), nombre: "", puesto: "", telefono: "", correo: "", whatsapp: "", rolDecision: "" }]);
+  const updContacto = (i, campos) => setCts(cts.map((c, j) => j === i ? { ...c, ...campos } : c));
+  const delContacto = (i) => setCts(cts.filter((_, j) => j !== i));
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold">{nuevo ? "Nuevo cliente" : "Editar cliente"}</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          <input value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} placeholder="Nombre / razón social *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div>
+            <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Tipo</div>
+            <div className="flex flex-wrap gap-1.5">
+              {TIPOS_CLIENTE.map((t) => (
+                <button key={t.id} onClick={() => setD({ ...d, tipo: d.tipo === t.id ? "" : t.id })} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold"
+                  style={{ borderColor: d.tipo === t.id ? C.tinta : C.borde, color: d.tipo === t.id ? C.tinta : C.dim, background: d.tipo === t.id ? "#fff" : "transparent" }}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Estado de la relación</div>
+            <div className="flex flex-wrap gap-1.5">
+              {ESTADOS_CLIENTE.map((s) => (
+                <button key={s.id} onClick={() => setD({ ...d, estado: s.id })} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold"
+                  style={{ borderColor: d.estado === s.id ? s.color : C.borde, color: d.estado === s.id ? s.color : C.dim, background: d.estado === s.id ? "#fff" : "transparent" }}>{s.label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={d.plaza} onChange={(e) => setD({ ...d, plaza: e.target.value })} placeholder="Plaza (León…)" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            <input value={d.giro} onChange={(e) => setD({ ...d, giro: e.target.value })} placeholder="Giro (automotriz…)" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={d.rfc} onChange={(e) => setD({ ...d, rfc: e.target.value })} placeholder="RFC" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+            <input value={d.direccion} onChange={(e) => setD({ ...d, direccion: e.target.value })} placeholder="Dirección" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}><Users size={12} /> Contactos</div>
+              <button onClick={addContacto} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Agregar</button>
+            </div>
+            {cts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin contactos. Agrega a las personas clave de esta cuenta.</div> : null}
+            {cts.map((c, i) => (
+              <div key={c.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="flex gap-1.5">
+                  <input value={c.nombre} onChange={(e) => updContacto(i, { nombre: e.target.value })} placeholder="Nombre" className="flex-1 rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                  <button onClick={() => delContacto(i)} className="px-2 rounded-lg border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={14} /></button>
+                </div>
+                <input value={c.puesto} onChange={(e) => updContacto(i, { puesto: e.target.value })} placeholder="Puesto" className="w-full rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={c.telefono} onChange={(e) => updContacto(i, { telefono: e.target.value })} placeholder="Teléfono" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  <input value={c.whatsapp} onChange={(e) => updContacto(i, { whatsapp: e.target.value })} placeholder="WhatsApp" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <input value={c.correo} onChange={(e) => updContacto(i, { correo: e.target.value })} placeholder="Correo" className="w-full rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                <div className="flex flex-wrap gap-1">
+                  {ROLES_DECISION.map((r) => (
+                    <button key={r.id} onClick={() => updContacto(i, { rolDecision: c.rolDecision === r.id ? "" : r.id })} className="text-xs px-2 py-1 rounded border font-semibold"
+                      style={{ borderColor: c.rolDecision === r.id ? C.azul : C.borde, color: c.rolDecision === r.id ? "#2C5A8F" : C.dim, background: c.rolDecision === r.id ? C.azulBg : "transparent" }}>{r.label}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {relacionadas.length > 0 ? (
+            <div className="rounded-xl border p-3 space-y-1.5" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Oportunidades de este cliente ({relacionadas.length})</div>
+              {relacionadas.slice(0, 8).map((o) => (
+                <div key={o.id} className="flex items-center justify-between text-sm gap-2">
+                  <span className="truncate" style={{ color: C.tinta }}>{o.titulo || o.cliente}</span>
+                  <span style={{ ...mono, color: C.dim }}>{fMXN(o.monto || 0)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas de la cuenta" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => d.nombre.trim() && onGuardar({ ...cliente, ...d }, cts.filter((c) => c.nombre.trim()))}
+              className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.nombre.trim() ? C.tinta : C.borde, color: "#fff" }}>
+              {nuevo ? "Crear cliente" : "Guardar cambios"}
+            </button>
+            {!nuevo && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
           </div>
         </div>
       </div>
@@ -712,6 +906,7 @@ const MANUAL = [
     "Margen: captura el porcentaje con que vendiste; se muestra en la tarjeta y alimenta el cálculo de comisiones.",
     "Moneda: en cada oportunidad puedes capturar el monto en pesos o en dólares con el switch MXN/USD. Si eliges USD, se convierte y se guarda en pesos usando el tipo de cambio de la pantalla de inicio; la tarjeta muestra el monto original en dólares.",
     "Comisiones: el botón Calcular comisiones toma una oportunidad ya facturada, su monto y margen, y con tu porcentaje calcula utilidad y tu pago.",
+    "Pedir estatus a vendedores: el botón agrupa tus oportunidades en curso por vendedor y arma un mensaje claro y numerado (cliente, monto, etapa, referencias y un renglón Estatus para llenar). Elige cuáles incluir y envíalo por WhatsApp, Compartir o Copiar. También puedes pedir el estatus de una sola oportunidad desde su ficha.",
     "Cuando cobres, avanza la oportunidad a Facturado. Las fechas de OC, pedido y factura se sellan solas al avanzar de etapa (y puedes editarlas).",
     "El buscador encuentra por cliente, vendedor, marca, plaza y por número de cotización, OC, pedido o factura. Los chips filtran por etapa (Todas al inicio, vista por defecto). Las tarjetas se ordenan por etapa y, dentro de cada etapa, de mayor a menor monto.",
   ]},
@@ -730,11 +925,10 @@ const MANUAL = [
   ]},
   { id: "visitas", t: "Visitas y check-in", c: [
     "Abre Visitas con el icono de ubicación (📍) de la barra superior; un punto ámbar avisa si tienes una visita de hoy sin check-in.",
-    "Programa una visita (suelta o ligada a una oportunidad del pipeline, que autocompleta el cliente) con fecha y hora de inicio y de término, cliente, notas, resultado y foto del lugar. El botón Agendar en Google Calendar crea el evento con ese horario.",
+    "Programa una visita (suelta o ligada a una oportunidad del pipeline, que autocompleta el cliente) con fecha y hora de inicio y de término, cliente, notas y resultado. El botón Agendar en Google Calendar crea el evento con ese horario.",
     "Check-in: al llegar con el cliente, toca «Estoy aquí» y la app guarda tu ubicación GPS y la hora exacta. La primera vez el teléfono pedirá permiso de ubicación: acéptalo.",
     "Cada visita con check-in muestra «Ver en mapa» (abre Google Maps en el punto) y la precisión en metros.",
     "Marca el resultado (Interés, Cotización, Pedido/cierre, Sin interés, Reagendar) para dar seguimiento después.",
-    "Las fotos se guardan comprimidas para no llenar la memoria; aun así, si tomas muchas, exporta respaldo con frecuencia.",
   ]},
   { id: "asistente", t: "Asistente por voz", c: [
     "Ábrelo con el micrófono de la barra superior. Dicta o escribe varias cosas seguidas y toca Interpretar: la app las clasifica en pendientes, oportunidades, metas o registros de tiempo.",
@@ -752,12 +946,16 @@ const MANUAL = [
   ]},
   { id: "cierre", t: "Cierre — reportes, exportar y respaldo", c: [
     "Cierre de semana: tus números de la semana y Copiar resumen para pegarlo en un reporte o mensaje a tu jefe.",
-    "Exportar: «Pipeline en Excel» genera un .xlsx con las columnas de dinero (monto, utilidad y comisión) en formato de moneda, ideal para revisar o compartir. «Pipeline para Monday» y los demás generan CSV para «Importar datos → Excel/CSV» en tu tablero.",
+    "Exportar: «Pipeline en Excel» genera un .xlsx ordenado como el flujo de venta (Oportunidad, Etapa, Cliente, Cotización y su fecha, Monto en pesos y su equivalente en dólares, Margen, OC, Pedido, Factura y sus fechas, luego utilidad/comisión y datos de contacto), con las columnas de dinero en formato de moneda. La columna Monto (USD) usa el importe original si la oportunidad se capturó en dólares, o el equivalente al tipo de cambio actual si fue en pesos. «Pipeline para Monday» y los demás generan CSV para «Importar datos → Excel/CSV» en tu tablero.",
     "Enviar a Google Tasks / Keep: filtra pendientes, completados o todos, y Compartir abre el menú de Android (Tasks crea una tarea con la lista; Keep una nota). Copiar lista sirve para pegar en la PC.",
     "Respaldo de datos: Exportar genera un .json completo; Importar lo restaura en otro dispositivo o tras un cambio de teléfono.",
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v3.3 — El Excel del pipeline incluye una columna Monto (USD) junto a la de pesos: muestra el importe original en dólares si así se capturó, o el equivalente al tipo de cambio actual.",
+    "v3.2 — El Excel del pipeline se reordenó siguiendo el flujo de venta: Oportunidad, Etapa, Cliente, Cotización y su fecha, Monto, Margen, OC, Pedido, Factura y sus fechas, y al final utilidad/comisión y datos de contacto.",
+    "v3.1 — Nuevo «Pedir estatus a vendedores» en el Pipeline: agrupa las oportunidades en curso por vendedor y genera un mensaje claro y numerado (con renglón Estatus) para enviar por WhatsApp o compartir. También disponible por oportunidad desde su ficha.",
+    "v3.0 — Nuevo tema visual en negro y rojo; el tipo de cambio admite hasta 4 decimales para ver el dólar con más detalle; las visitas ya no guardan fotos (para no consumir memoria del dispositivo).",
     "v2.9 — Las visitas ahora tienen fecha y hora de término (además de las de inicio) y un botón para agendarlas directamente en Google Calendar.",
     "v2.8 — Cuenta en la nube (icono ☁️): inicia sesión con correo y contraseña y tus datos se sincronizan automáticamente entre tu celular y tu PC. Sigue funcionando sin internet y sincroniza al reconectar.",
     "v2.7 — Nuevo módulo de Visitas (icono de ubicación en la barra superior): programa visitas sueltas o ligadas a una oportunidad, haz check-in por GPS al llegar con hora y ubicación, marca el resultado y adjunta foto del lugar.",
@@ -858,8 +1056,8 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
         <div className="mt-2 rounded-xl px-3 py-2.5 flex items-center gap-2" style={{ background: C.bezel2 }}>
           <span className="text-xs uppercase font-semibold" style={{ ...dsp, color: "#8FA0B3", letterSpacing: "0.08em" }}>TC USD→MXN</span>
           <span className="text-sm" style={{ ...mono, color: "#fff" }}>$</span>
-          <input type="number" inputMode="decimal" value={tcLocal} onChange={(e) => setTcLocal(e.target.value)} onBlur={() => onTC(tcLocal === "" ? 0 : Number(tcLocal))}
-            className="w-16 text-sm rounded-lg px-2 py-1" style={{ ...mono, background: C.bezel, color: "#fff", border: `1px solid #34435400`, colorScheme: "dark" }} />
+          <input type="number" inputMode="decimal" step="0.0001" value={tcLocal} onChange={(e) => setTcLocal(e.target.value)} onBlur={() => onTC(tcLocal === "" ? 0 : Number(tcLocal))}
+            className="w-24 text-sm rounded-lg px-2 py-1" style={{ ...mono, background: C.bezel, color: "#fff", border: `1px solid #34435400`, colorScheme: "dark" }} />
           <button onClick={fetchTC} className="text-xs px-2.5 py-1 rounded-lg border font-semibold ml-auto" style={{ borderColor: tcEstado === "err" ? C.rojo : C.azul, color: tcEstado === "err" ? C.rojo : C.azul }}>
             {tcEstado === "…" ? "Buscando…" : tcEstado === "ok" ? "✓ Actualizado" : tcEstado === "err" ? "Sin conexión" : "↻ Actualizar"}
           </button>
@@ -892,9 +1090,9 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           <button onClick={onCuenta} className="w-full rounded-xl px-3 py-2.5 mb-2 flex items-center justify-center gap-2" style={{ background: C.bezel2 }}>
             {sesion ? <><Cloud size={14} style={{ color: sync === "sincronizado" ? "#2F9467" : "#DE9B10" }} /><span className="text-xs truncate" style={{ color: "#C6D2DE" }}>{sesion.user.email} · {sync === "sincronizado" ? "Sincronizado" : "Sincronizando…"}</span></> : <><CloudOff size={14} style={{ color: "#8FA0B3" }} /><span className="text-xs" style={{ color: "#C6D2DE" }}>Iniciar sesión para sincronizar tus dispositivos</span></>}
           </button>
-          <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: C.bezel }}>Entrar al tablero</button>
+          <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v2.9</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.3</div>
         </div>
       </div>
     </div>
@@ -1056,6 +1254,8 @@ export default function App() {
   const [ahora, setAhora] = useState(Date.now());
   const [expand, setExpand] = useState(null);
   const [oppEdit, setOppEdit] = useState(null);
+  const [cliEdit, setCliEdit] = useState(null);
+  const [buscarCli, setBuscarCli] = useState("");
   const [verCierre, setVerCierre] = useState(false);
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
@@ -1082,6 +1282,7 @@ export default function App() {
   const [expMeta, setExpMeta] = useState(null);
   const [mesSel, setMesSel] = useState("");
   const [verComision, setVerComision] = useState(false);
+  const [verSeguimiento, setVerSeguimiento] = useState(false);
   const [verVisitas, setVerVisitas] = useState(false);
   const [visitaEdit, setVisitaEdit] = useState(null);
   const [mesCom, setMesCom] = useState("");
@@ -1261,6 +1462,20 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
+  const guardarCliente = (c, cts) => {
+    const ts = new Date().toISOString();
+    const id = c.id || uid();
+    const clientes = c.id
+      ? (data.clientes || []).map((x) => x.id === id ? { ...x, ...c, actualizada: ts } : x)
+      : [{ ...c, id, creada: ts, actualizada: ts }, ...(data.clientes || [])];
+    const otros = (data.contactos || []).filter((ct) => ct.clienteId !== id);
+    const nuevos = (cts || []).map((ct) => ({ ...ct, id: ct.id || uid(), clienteId: id }));
+    guardar({ ...data, clientes, contactos: [...otros, ...nuevos] }); setCliEdit(null);
+  };
+  const delCliente = (id) => {
+    guardar({ ...data, clientes: (data.clientes || []).filter((c) => c.id !== id), contactos: (data.contactos || []).filter((ct) => ct.clienteId !== id) });
+    setCliEdit(null);
+  };
   const setOppCampos = (id, campos) => guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === id ? { ...o, ...campos } : o) });
   const guardarVisita = (v) => {
     const ts = new Date().toISOString();
@@ -1283,7 +1498,7 @@ export default function App() {
       const r = await fetch("https://open.er-api.com/v6/latest/USD");
       const j = await r.json();
       const v = j && j.rates && j.rates.MXN;
-      if (v) { const val = Math.round(v * 100) / 100; guardar({ ...data, tipoCambio: val, tipoCambioFecha: hoy() }); return val; }
+      if (v) { const val = Math.round(v * 10000) / 10000; guardar({ ...data, tipoCambio: val, tipoCambioFecha: hoy() }); return val; }
       return false;
     } catch { return false; }
   };
@@ -1345,10 +1560,10 @@ export default function App() {
   ]));
   const expPipelineXLSX = () => {
     const filas = [
-      ["Oportunidad", "Etapa", "Cliente", "Monto (MXN)", "Margen (%)", "Utilidad (MXN)", "Comisión (%)", "Comisión (MXN)", "Pagada", "Marca", "Plaza", "Vendedor", "Cotización", "Fecha cotización", "OC cliente", "Fecha OC", "Pedido", "Fecha pedido", "Factura", "Fecha factura", "Próxima acción", "Fecha acción", "Notas", "Actualizada"],
-      ...data.pipeline.map((o) => { const util = (o.monto || 0) * (o.margen || 0) / 100; const cp = o.comisionPct === "" || o.comisionPct == null ? "" : Number(o.comisionPct); const com = cp === "" ? "" : util * cp / 100; return [`${o.cliente}${o.titulo ? " — " + o.titulo : ""}`, etapa(o.etapa).label, o.cliente, o.monto ?? "", o.margen ?? "", o.etapa === "facturado" ? util : "", cp, o.etapa === "facturado" ? com : "", o.comisionPagada ? "Sí" : "No", o.marca, o.plaza, o.vendedor || "", o.numCotizacion || "", o.fechaCotizacion || "", o.ocCliente || "", o.fechaOC || "", o.numPedido || "", o.fechaPedido || "", o.numFactura || "", o.fechaFactura || "", o.proximaAccion, o.fechaAccion, o.notas, (o.actualizada || "").slice(0, 10)]; }),
+      ["Oportunidad", "Etapa", "Cliente", "Cotización", "Fecha cotización", "Monto (MXN)", "Monto (USD)", "Margen (%)", "OC cliente", "Fecha OC", "Pedido", "Fecha pedido", "Factura", "Fecha factura", "Utilidad (MXN)", "Comisión (%)", "Comisión (MXN)", "Pagada", "Vendedor", "Marca", "Plaza", "Próxima acción", "Fecha acción", "Notas", "Actualizada"],
+      ...data.pipeline.map((o) => { const tc = data.tipoCambio || 0; const util = (o.monto || 0) * (o.margen || 0) / 100; const cp = o.comisionPct === "" || o.comisionPct == null ? "" : Number(o.comisionPct); const com = cp === "" ? "" : util * cp / 100; const usd = o.moneda === "USD" && o.montoOrig != null ? o.montoOrig : (tc > 0 && o.monto ? Math.round((o.monto / tc) * 100) / 100 : ""); return [`${o.cliente}${o.titulo ? " — " + o.titulo : ""}`, etapa(o.etapa).label, o.cliente, o.numCotizacion || "", o.fechaCotizacion || "", o.monto ?? "", usd, o.margen ?? "", o.ocCliente || "", o.fechaOC || "", o.numPedido || "", o.fechaPedido || "", o.numFactura || "", o.fechaFactura || "", o.etapa === "facturado" ? util : "", cp, o.etapa === "facturado" ? com : "", o.comisionPagada ? "Sí" : "No", o.vendedor || "", o.marca, o.plaza, o.proximaAccion, o.fechaAccion, o.notas, (o.actualizada || "").slice(0, 10)]; }),
     ];
-    const tipos = ["text", "text", "text", "money", "percent", "money", "percent", "money", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text"];
+    const tipos = ["text", "text", "text", "text", "text", "money", "money", "percent", "text", "text", "text", "text", "text", "text", "money", "percent", "money", "text", "text", "text", "text", "text", "text", "text", "text"];
     exportarXLSX(`pipeline_${hoy()}.xlsx`, "Pipeline", filas, tipos);
   };
   const expTareas = () => descargar(`pendientes_${hoy()}.csv`, aCSV([
@@ -1417,6 +1632,7 @@ export default function App() {
     { id: "hoy", icon: ListTodo, label: "Hoy" },
     { id: "tiempo", icon: Timer, label: "Tiempo" },
     { id: "pipeline", icon: Briefcase, label: "Pipeline" },
+    { id: "clientes", icon: Building2, label: "Clientes" },
     { id: "metas", icon: Target, label: "Metas" },
     { id: "cierre", icon: FileDown, label: "Cierre" },
     { id: "comisiones", icon: Percent, label: "Comis." },
@@ -1711,6 +1927,9 @@ export default function App() {
             <button onClick={() => setVerComision(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>
               <Percent size={15} /> Calcular comisiones
             </button>
+            <button onClick={() => setVerSeguimiento(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, background: C.azulBg, color: "#2C5A8F" }}>
+              <Send size={15} /> Pedir estatus a vendedores
+            </button>
 
             <div className="space-y-2 mt-2">
               {oppsFiltradas.length === 0 && <Vacio>Sin oportunidades aquí. Cada acuerdo de visita o cotización enviada merece una tarjeta.</Vacio>}
@@ -1765,6 +1984,45 @@ export default function App() {
         )}
 
         {/* ════ METAS ════ */}
+        {tab === "clientes" && (
+          <div>
+            <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Clientes ({(data.clientes || []).length})</div>
+                <button onClick={() => setCliEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
+                  <Plus size={16} /> Nuevo
+                </button>
+              </div>
+              <div className="relative mb-2">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
+                <input value={buscarCli} onChange={(e) => setBuscarCli(e.target.value)} placeholder="Buscar cliente…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
+              </div>
+              {(data.clientes || []).length === 0 ? (
+                <div className="text-sm text-center py-6" style={{ color: C.dim }}>Aún no tienes clientes. Toca «Nuevo» para crear tu primera cuenta.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {(data.clientes || []).filter((c) => !buscarCli || (c.nombre || "").toLowerCase().includes(buscarCli.toLowerCase())).map((c) => {
+                    const est = ESTADOS_CLIENTE.find((s) => s.id === c.estado) || ESTADOS_CLIENTE[0];
+                    const nCt = (data.contactos || []).filter((ct) => ct.clienteId === c.id).length;
+                    const tipoLb = (TIPOS_CLIENTE.find((t) => t.id === c.tipo) || {}).label || "";
+                    return (
+                      <button key={c.id} onClick={() => setCliEdit(c)} className="w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                        <Building2 size={18} style={{ color: est.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.nombre}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[tipoLb, c.plaza, nCt ? `${nCt} contacto${nCt > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") || "Sin datos adicionales"}</div>
+                        </div>
+                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: est.color, background: est.color + "22" }}>{est.label}</span>
+                        <ChevronRight size={16} style={{ color: C.dim }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="text-xs mt-3 px-1" style={{ color: C.dim }}>Las oportunidades se ligan al cliente por su nombre. Escríbelo igual en el pipeline y en la ficha para verlas juntas.</div>
+          </div>
+        )}
         {tab === "metas" && (
           <div>
             <div className="text-xs" style={{ color: C.dim }}>Metas y proyectos. Toca una meta para ponerle fecha de inicio y fin: las que tengan ambas aparecen en el cronograma. Revísalas cada viernes — una meta sin acción es solo un deseo.</div>
@@ -1932,7 +2190,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Brida v2.9 · PWA · nube</div>
+            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Brida v3.3 · PWA · nube</div>
           </div>
         )}
 
@@ -2142,6 +2400,7 @@ export default function App() {
         );
       })()}
 
+      {verSeguimiento && <SeguimientoSheet opps={data.pipeline} onCerrar={() => setVerSeguimiento(false)} />}
       {verCuenta && <CuentaSheet sesion={sesion} sync={sync} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
       {verVisitas && <VisitasSheet visitas={data.visitas || []} opps={data.pipeline} onNueva={() => setVisitaEdit({})} onEditar={(v) => setVisitaEdit(v)} onCheckin={checkinVisita} onCerrar={() => setVerVisitas(false)} />}
       {visitaEdit !== null && <VisitaEditor visita={visitaEdit} opps={data.pipeline} onGuardar={guardarVisita} onEliminar={() => delVisita(visitaEdit.id)} onCheckin={obtenerUbicacion} onCerrar={() => setVisitaEdit(null)} />}
@@ -2149,6 +2408,9 @@ export default function App() {
 
       {oppEdit !== null && (
         <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} />
+      )}
+      {cliEdit !== null && (
+        <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
       )}
     </div>
   );

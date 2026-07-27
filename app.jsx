@@ -128,6 +128,55 @@ function totalesCot(cot) {
   const iva = cot.iva !== false ? sub * 0.16 : 0;
   return { sub, iva, total: sub + iva };
 }
+function escHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function pdfCotizacion(cot) {
+  const t = totalesCot(cot);
+  const cur = cot.moneda === "USD" ? " USD" : "";
+  const st = (ESTADOS_COTIZACION.find((s) => s.id === cot.estado) || ESTADOS_COTIZACION[0]).label;
+  const filas = (cot.partidas || []).map((p, i) => {
+    const imp = (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100);
+    return `<tr><td>${i + 1}</td><td>${escHtml(p.descripcion)}</td><td class="r">${Number(p.cantidad) || 0}</td><td class="r">${fMXN(Number(p.precio) || 0)}</td><td class="r">${p.descuento ? Number(p.descuento) + "%" : "—"}</td><td class="r">${fMXN(imp)}</td></tr>`;
+  }).join("");
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotización ${escHtml(cot.folio || "")}</title>
+<style>
+*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#182430;margin:0;padding:32px}
+.head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #E23B3B;padding-bottom:12px}
+.marca{font-size:28px;font-weight:800;letter-spacing:2px;color:#182430}
+.doc{font-size:12px;color:#5E6E7E;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.meta{text-align:right;font-size:13px;color:#5E6E7E;line-height:1.7}.meta b{color:#182430}
+.cliente{margin:20px 0 4px}.cliente .lbl{font-size:11px;color:#9AA7B4;text-transform:uppercase;letter-spacing:1px}.cliente .nom{font-size:15px;font-weight:700}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+th{background:#141C26;color:#fff;text-align:left;padding:8px;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+th.r,td.r{text-align:right}td{padding:7px 8px;border-bottom:1px solid #E5E9ED}
+.tot{margin-top:16px;margin-left:auto;width:280px;font-size:14px}
+.tot .row{display:flex;justify-content:space-between;padding:4px 0}
+.tot .total{font-weight:800;font-size:17px;border-top:2px solid #182430;padding-top:7px;margin-top:2px}
+.notas{margin-top:22px;font-size:12px;color:#5E6E7E;white-space:pre-wrap;border-left:3px solid #E5E9ED;padding-left:10px}
+.foot{margin-top:36px;font-size:11px;color:#9AA7B4;border-top:1px solid #E5E9ED;padding-top:10px;text-align:center}
+@media print{body{padding:16mm 14mm}@page{margin:0}}
+</style></head><body>
+<div class="head">
+  <div><div class="marca">COTIZACIÓN</div><div class="doc">${cot.folio ? "Folio " + escHtml(cot.folio) : "Propuesta comercial"}</div></div>
+  <div class="meta"><b>Fecha:</b> ${escHtml(cot.fecha || "")}<br><b>Estado:</b> ${escHtml(st)}</div>
+</div>
+<div class="cliente"><div class="lbl">Cliente</div><div class="nom">${escHtml(cot.cliente || "—")}</div></div>
+<table>
+  <thead><tr><th>#</th><th>Descripción</th><th class="r">Cant.</th><th class="r">P. Unit.</th><th class="r">Desc.</th><th class="r">Importe</th></tr></thead>
+  <tbody>${filas || '<tr><td colspan="6" style="text-align:center;color:#9AA7B4;padding:16px">Sin partidas</td></tr>'}</tbody>
+</table>
+<div class="tot">
+  <div class="row"><span>Subtotal</span><span>${fMXN(t.sub)}${cur}</span></div>
+  ${cot.iva !== false ? `<div class="row"><span>IVA 16%</span><span>${fMXN(t.iva)}${cur}</span></div>` : ""}
+  <div class="row total"><span>Total</span><span>${fMXN(t.total)}${cur}</span></div>
+</div>
+${cot.notas ? `<div class="notas">${escHtml(cot.notas)}</div>` : ""}
+<div class="foot">Documento sujeto a confirmación · Precios en ${cur.trim() || "MXN"}</div>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { alert("Permite las ventanas emergentes (pop-ups) para generar el PDF."); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(() => { try { w.print(); } catch (e) {} }, 500);
+}
 
 /* ── Google Calendar (URL pre-llenada) ────────────────────────────── */
 const masMinutos = (hhmm, mins) => {
@@ -1089,6 +1138,7 @@ function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEl
             <div className="flex justify-between text-base font-bold pt-1 border-t" style={{ borderColor: C.borde, color: C.tinta }}><span>Total</span><span style={mono}>{fMXN(total)}{cur}</span></div>
           </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas / condiciones (tiempo de entrega, vigencia…)" rows={2} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <button onClick={() => pdfCotizacion({ ...cot, ...d, partidas: parts })} className="w-full py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><FileDown size={16} /> Descargar PDF</button>
           <div className="flex gap-2">
             <button onClick={() => d.cliente.trim() && onGuardar({ ...cot, ...d, partidas: parts })} className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>{nueva ? "Crear cotización" : "Guardar cambios"}</button>
             {!nueva && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}

@@ -116,11 +116,12 @@ const ACTIVIDAD = traductor(
 );
 const PRODUCTO = traductor(
   { codigo: "codigo", descripcion: "descripcion", marca: "marca", unidad: "unidad",
-    precio: "precio", moneda: "moneda", margen: "margen" },
+    precio: "precio", moneda: "moneda", margen: "margen", datasheet: "datasheet" },
   ["precio", "margen"]
 );
 const COTIZACION = traductor(
   { cliente: "cliente", clienteId: "cliente_id", oportunidadId: "oportunidad_id",
+    representante: "representante", domicilio: "domicilio", cotizador: "cotizador",
     folio: "folio", fecha: "fecha", estado: "estado", moneda: "moneda",
     iva: "iva", notas: "notas", partidas: "partidas" }
 );

@@ -162,41 +162,43 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 // ═══════════════════════ LECTURA (nube → bloque) ═════════════════
 // Devuelve { data: <bloque como lo espera la app>, actualizado }.
 export async function leerNube(uid) {
+  const q = (b) => b.then((r) => r).catch((e) => ({ error: { message: String((e && e.message) || e) } }));
   const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot, raju] = await Promise.all([
-    sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false }),
-    sb.from("visitas").select("*").order("fecha", { ascending: false }),
-    sb.from("tareas").select("*").order("fecha", { ascending: true }),
-    sb.from("tiempo").select("*").order("fecha", { ascending: false }),
-    sb.from("metas").select("*").order("creada", { ascending: true }),
-    sb.from("clientes").select("*").order("actualizada", { ascending: false }),
-    sb.from("contactos").select("*").order("creada", { ascending: true }),
-    sb.from("actividades").select("*").order("fecha", { ascending: false }),
-    sb.from("productos").select("*").order("descripcion", { ascending: true }),
-    sb.from("cotizaciones").select("*").order("actualizada", { ascending: false }),
-    sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle(),
+    q(sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false })),
+    q(sb.from("visitas").select("*").order("fecha", { ascending: false })),
+    q(sb.from("tareas").select("*").order("fecha", { ascending: true })),
+    q(sb.from("tiempo").select("*").order("fecha", { ascending: false })),
+    q(sb.from("metas").select("*").order("creada", { ascending: true })),
+    q(sb.from("clientes").select("*").order("actualizada", { ascending: false })),
+    q(sb.from("contactos").select("*").order("creada", { ascending: true })),
+    q(sb.from("actividades").select("*").order("fecha", { ascending: false })),
+    q(sb.from("productos").select("*").order("descripcion", { ascending: true })),
+    q(sb.from("cotizaciones").select("*").order("actualizada", { ascending: false })),
+    q(sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle()),
   ]);
-  for (const r of [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot]) if (r.error) throw r.error;
-  if (raju.error) throw raju.error;
+  [["oportunidades", ropp], ["visitas", rvis], ["tareas", rtar], ["tiempo", rtie], ["metas", rmet], ["clientes", rcli], ["contactos", rcon], ["actividades", ract], ["productos", rprod], ["cotizaciones", rcot], ["ajustes", raju]]
+    .forEach(([n, r]) => { if (r && r.error) console.warn("Brida · no se pudo leer '" + n + "' (¿falta correr su migración SQL?):", r.error.message); });
+  const D = (r) => (r && !r.error && Array.isArray(r.data)) ? r.data : [];
 
   const metas = { corto: [], mediano: [], largo: [] };
-  for (const row of rmet.data) {
+  for (const row of D(rmet)) {
     const m = { id: row.id, texto: row.texto, hecha: row.hecha, inicio: "", fin: "" };
     (metas[row.horizonte] || metas.corto).push(m);
   }
-  const aj = raju.data || {};
+  const aj = (raju && !raju.error && raju.data) ? raju.data : {};
   const actualizado = aj.actualizado || "";
 
   const data = {
-    pipeline: ropp.data.map(OPP.aApp),
-    visitas: rvis.data.map(visitaAApp),
-    tareas: rtar.data.map(TAREA.aApp),
-    tiempo: rtie.data.map(TIEMPO.aApp),
+    pipeline: D(ropp).map(OPP.aApp),
+    visitas: D(rvis).map(visitaAApp),
+    tareas: D(rtar).map(TAREA.aApp),
+    tiempo: D(rtie).map(TIEMPO.aApp),
     metas,
-    clientes: rcli.data.map(CLIENTE.aApp),
-    contactos: rcon.data.map(CONTACTO.aApp),
-    actividades: ract.data.map(ACTIVIDAD.aApp),
-    productos: rprod.data.map(PRODUCTO.aApp),
-    cotizaciones: rcot.data.map(COTIZACION.aApp),
+    clientes: D(rcli).map(CLIENTE.aApp),
+    contactos: D(rcon).map(CONTACTO.aApp),
+    actividades: D(ract).map(ACTIVIDAD.aApp),
+    productos: D(rprod).map(PRODUCTO.aApp),
+    cotizaciones: D(rcot).map(COTIZACION.aApp),
     mejoras: aj.mejoras || [],
     timer: aj.timer || null,
     tipoCambio: aj.tipo_cambio ?? 17,
@@ -211,117 +213,86 @@ export async function leerNube(uid) {
 // elimina (o archiva) lo que ya no está. No manda el dueño: la base lo
 // pone solo (default auth.uid()) al crear, y no lo cambia al actualizar.
 export async function subirNube(uid, estado) {
-  // — OPORTUNIDADES: upsert + archivar las que faltan —
-  const opps = estado.pipeline || [];
-  if (opps.length) {
-    const filas = opps.map((o) => ({ ...OPP.aFila(o), id: o.id }));
-    const { error } = await sb.from("oportunidades").upsert(filas, { onConflict: "id" });
+  const fallos = [];
+  const up = async (tabla, filas) => {
+    if (!filas.length) return;
+    const { error } = await sb.from(tabla).upsert(filas, { onConflict: "id" });
     if (error) throw error;
-  }
-  {
+  };
+  const paso = async (nombre, fn) => {
+    try { await fn(); }
+    catch (e) { fallos.push(nombre); console.warn("Brida \u00b7 no se pudo guardar '" + nombre + "' (\u00bffalta correr su migraci\u00f3n SQL?):", (e && e.message) || e); }
+  };
+
+  await paso("oportunidades", async () => {
+    const opps = estado.pipeline || [];
+    await up("oportunidades", opps.map((o) => ({ ...OPP.aFila(o), id: o.id })));
     const vivos = new Set(opps.map((o) => o.id));
     const existentes = await idsDe("oportunidades", "vendedor_id", uid, (q) => q.eq("archivada", false));
     const aArchivar = existentes.filter((id) => !vivos.has(id));
-    if (aArchivar.length) {
-      const { error } = await sb.from("oportunidades").update({ archivada: true }).in("id", aArchivar);
-      if (error) throw error;
-    }
-  }
-
-  // — VISITAS: upsert + borrar las que faltan —
-  const vis = estado.visitas || [];
-  if (vis.length) {
-    const filas = vis.map((v) => ({ ...visitaAFila(v), id: v.id }));
-    const { error } = await sb.from("visitas").upsert(filas, { onConflict: "id" });
+    if (aArchivar.length) { const { error } = await sb.from("oportunidades").update({ archivada: true }).in("id", aArchivar); if (error) throw error; }
+  });
+  await paso("visitas", async () => {
+    const vis = estado.visitas || [];
+    await up("visitas", vis.map((v) => ({ ...visitaAFila(v), id: v.id })));
+    await borrarFaltantes("visitas", "vendedor_id", uid, vis.map((v) => v.id));
+  });
+  await paso("tareas", async () => {
+    const tar = estado.tareas || [];
+    await up("tareas", tar.map((t) => ({ ...TAREA.aFila(t), id: t.id })));
+    await borrarFaltantes("tareas", "user_id", uid, tar.map((t) => t.id));
+  });
+  await paso("tiempo", async () => {
+    const tie = estado.tiempo || [];
+    await up("tiempo", tie.map((r) => ({ ...TIEMPO.aFila(r), id: r.id })));
+    await borrarFaltantes("tiempo", "user_id", uid, tie.map((r) => r.id));
+  });
+  await paso("metas", async () => {
+    const metasObj = estado.metas || {};
+    const filasMetas = [];
+    for (const h of ["corto", "mediano", "largo"]) for (const m of metasObj[h] || []) filasMetas.push({ id: m.id, horizonte: h, texto: m.texto, hecha: !!m.hecha });
+    await up("metas", filasMetas);
+    await borrarFaltantes("metas", "user_id", uid, filasMetas.map((m) => m.id));
+  });
+  await paso("clientes", async () => {
+    const clis = estado.clientes || [];
+    await up("clientes", clis.map((c) => ({ ...CLIENTE.aFila(c), id: c.id })));
+    await borrarFaltantes("clientes", "vendedor_id", uid, clis.map((c) => c.id));
+  });
+  await paso("contactos", async () => {
+    const cons = estado.contactos || [];
+    await up("contactos", cons.map((c) => ({ ...CONTACTO.aFila(c), id: c.id })));
+    await borrarFaltantes("contactos", "vendedor_id", uid, cons.map((c) => c.id));
+  });
+  await paso("actividades", async () => {
+    const acts = estado.actividades || [];
+    await up("actividades", acts.map((a) => ({ ...ACTIVIDAD.aFila(a), id: a.id })));
+    await borrarFaltantes("actividades", "vendedor_id", uid, acts.map((a) => a.id));
+  });
+  await paso("productos", async () => {
+    const prods = estado.productos || [];
+    await up("productos", prods.map((p) => ({ ...PRODUCTO.aFila(p), id: p.id })));
+    await borrarFaltantes("productos", "vendedor_id", uid, prods.map((p) => p.id));
+  });
+  await paso("cotizaciones", async () => {
+    const cots = estado.cotizaciones || [];
+    await up("cotizaciones", cots.map((c) => ({ ...COTIZACION.aFila(c), id: c.id })));
+    await borrarFaltantes("cotizaciones", "vendedor_id", uid, cots.map((c) => c.id));
+  });
+  await paso("ajustes", async () => {
+    const { error } = await sb.from("ajustes").upsert({
+      user_id: uid, timer: estado.timer ?? null, tipo_cambio: estado.tipoCambio ?? 17,
+      tipo_cambio_fecha: estado.tipoCambioFecha || null, mejoras: estado.mejoras || [],
+      actualizado: estado.__actualizado || new Date().toISOString(),
+    }, { onConflict: "user_id" });
     if (error) throw error;
-  }
-  await borrarFaltantes("visitas", "vendedor_id", uid, vis.map((v) => v.id));
+  });
 
-  // — TAREAS —
-  const tar = estado.tareas || [];
-  if (tar.length) {
-    const filas = tar.map((t) => ({ ...TAREA.aFila(t), id: t.id }));
-    const { error } = await sb.from("tareas").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
+  if (fallos.length) {
+    const e = new Error("Sincronizaci\u00f3n parcial. Revisa migraciones de: " + fallos.join(", "));
+    e.parcial = true;
+    throw e;
   }
-  await borrarFaltantes("tareas", "user_id", uid, tar.map((t) => t.id));
-
-  // — TIEMPO —
-  const tie = estado.tiempo || [];
-  if (tie.length) {
-    const filas = tie.map((r) => ({ ...TIEMPO.aFila(r), id: r.id }));
-    const { error } = await sb.from("tiempo").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("tiempo", "user_id", uid, tie.map((r) => r.id));
-
-  // — METAS (aplanar corto/mediano/largo con su horizonte) —
-  const metasObj = estado.metas || {};
-  const filasMetas = [];
-  for (const h of ["corto", "mediano", "largo"]) {
-    for (const m of metasObj[h] || []) filasMetas.push({ id: m.id, horizonte: h, texto: m.texto, hecha: !!m.hecha });
-  }
-  if (filasMetas.length) {
-    const { error } = await sb.from("metas").upsert(filasMetas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("metas", "user_id", uid, filasMetas.map((m) => m.id));
-
-  // — CLIENTES (upsert + borrar faltantes) —
-  const clis = estado.clientes || [];
-  if (clis.length) {
-    const filas = clis.map((c) => ({ ...CLIENTE.aFila(c), id: c.id }));
-    const { error } = await sb.from("clientes").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("clientes", "vendedor_id", uid, clis.map((c) => c.id));
-
-  // — CONTACTOS (después de clientes por la relación cliente_id) —
-  const cons = estado.contactos || [];
-  if (cons.length) {
-    const filas = cons.map((c) => ({ ...CONTACTO.aFila(c), id: c.id }));
-    const { error } = await sb.from("contactos").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("contactos", "vendedor_id", uid, cons.map((c) => c.id));
-
-  // — ACTIVIDADES (bitácora) —
-  const acts = estado.actividades || [];
-  if (acts.length) {
-    const filas = acts.map((a) => ({ ...ACTIVIDAD.aFila(a), id: a.id }));
-    const { error } = await sb.from("actividades").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("actividades", "vendedor_id", uid, acts.map((a) => a.id));
-
-  // — PRODUCTOS (catálogo) —
-  const prods = estado.productos || [];
-  if (prods.length) {
-    const filas = prods.map((p) => ({ ...PRODUCTO.aFila(p), id: p.id }));
-    const { error } = await sb.from("productos").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("productos", "vendedor_id", uid, prods.map((p) => p.id));
-
-  // — COTIZACIONES (partidas en jsonb) —
-  const cots = estado.cotizaciones || [];
-  if (cots.length) {
-    const filas = cots.map((c) => ({ ...COTIZACION.aFila(c), id: c.id }));
-    const { error } = await sb.from("cotizaciones").upsert(filas, { onConflict: "id" });
-    if (error) throw error;
-  }
-  await borrarFaltantes("cotizaciones", "vendedor_id", uid, cots.map((c) => c.id));
-
-  // — AJUSTES (cronómetro, tipo de cambio, ideas de mejora) —
-  const { error: eaj } = await sb.from("ajustes").upsert({
-    user_id: uid,
-    timer: estado.timer ?? null,
-    tipo_cambio: estado.tipoCambio ?? 17,
-    tipo_cambio_fecha: estado.tipoCambioFecha || null,
-    mejoras: estado.mejoras || [],
-    actualizado: estado.__actualizado || new Date().toISOString(),
-  }, { onConflict: "user_id" });
-  if (eaj) throw eaj;
 }
 
 async function borrarFaltantes(tabla, ownerCol, uid, idsVivos) {

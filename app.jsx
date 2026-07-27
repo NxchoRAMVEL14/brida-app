@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
@@ -83,7 +83,7 @@ const descargar = (nombre, contenido, tipo = "text/csv;charset=utf-8;") => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], actividades: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
+const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], actividades: [], productos: [], cotizaciones: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
 const RESULTADOS = [
   { id: "pendiente", label: "Pendiente", color: "#5E6E7E" },
   { id: "interes", label: "Interés", color: "#3D74B8" },
@@ -117,6 +117,17 @@ const TIPOS_ACTIVIDAD = [
   { id: "visita", label: "Visita" },
   { id: "nota", label: "Nota" },
 ];
+const ESTADOS_COTIZACION = [
+  { id: "borrador", label: "Borrador", color: "#5E6E7E" },
+  { id: "enviada", label: "Enviada", color: "#3D74B8" },
+  { id: "aceptada", label: "Aceptada", color: "#2F9467" },
+  { id: "rechazada", label: "Rechazada", color: "#C94848" },
+];
+function totalesCot(cot) {
+  const sub = (cot.partidas || []).reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
+  const iva = cot.iva !== false ? sub * 0.16 : 0;
+  return { sub, iva, total: sub + iva };
+}
 
 /* ── Google Calendar (URL pre-llenada) ────────────────────────────── */
 const masMinutos = (hhmm, mins) => {
@@ -930,6 +941,182 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
   );
 }
 
+/* ── Catálogo de productos ────────────────────────────────────────── */
+function ProdForm({ prod, onGuardar, onCancelar, onEliminar }) {
+  const [d, setD] = useState({ codigo: prod.codigo || "", descripcion: prod.descripcion || "", marca: prod.marca || "", unidad: prod.unidad || "pza", precio: prod.precio ?? "", moneda: prod.moneda || "MXN" });
+  return (
+    <div className="space-y-2">
+      <div style={dsp} className="uppercase text-xs font-semibold" >{prod.id ? "Editar producto" : "Nuevo producto"}</div>
+      <input value={d.descripcion} onChange={(e) => setD({ ...d, descripcion: e.target.value })} placeholder="Descripción *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      <div className="grid grid-cols-2 gap-2">
+        <input value={d.codigo} onChange={(e) => setD({ ...d, codigo: e.target.value })} placeholder="Código" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <input value={d.marca} onChange={(e) => setD({ ...d, marca: e.target.value })} placeholder="Marca" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <input value={d.precio} onChange={(e) => setD({ ...d, precio: e.target.value })} placeholder="Precio" inputMode="decimal" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <select value={d.moneda} onChange={(e) => setD({ ...d, moneda: e.target.value })} className="rounded-lg px-2 py-2.5 text-sm" style={inp}><option>MXN</option><option>USD</option></select>
+        <input value={d.unidad} onChange={(e) => setD({ ...d, unidad: e.target.value })} placeholder="Unidad" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => d.descripcion.trim() && onGuardar({ ...prod, ...d, precio: d.precio === "" ? null : Number(d.precio) })} className="flex-1 py-2.5 rounded-xl font-semibold" style={{ background: d.descripcion.trim() ? C.tinta : C.borde, color: "#fff" }}>{prod.id ? "Guardar" : "Agregar"}</button>
+        {onEliminar && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
+        <button onClick={onCancelar} className="px-3 rounded-xl border text-sm" style={{ borderColor: C.borde, color: C.dim }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+function CatalogoSheet({ productos, onGuardarProd, onEliminarProd, onCerrar }) {
+  const [ed, setEd] = useState(null);
+  const [q, setQ] = useState("");
+  const lista = (productos || []).filter((p) => !q || `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><Package size={16} /> Catálogo</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          {ed ? (
+            <ProdForm prod={ed} onGuardar={(p) => { onGuardarProd(p); setEd(null); }} onCancelar={() => setEd(null)} onEliminar={ed.id ? () => { onEliminarProd(ed.id); setEd(null); } : null} />
+          ) : (
+            <>
+              <button onClick={() => setEd({})} className="w-full py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}><Plus size={16} /> Nuevo producto</button>
+              <div className="relative">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código, descripción o marca…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
+              </div>
+              {lista.length === 0 ? <div className="text-sm text-center py-6" style={{ color: C.dim }}>Catálogo vacío. Agrega tus productos y marcas.</div> : (
+                <div className="space-y-1.5">
+                  {lista.map((p) => (
+                    <button key={p.id} onClick={() => setEd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div>
+                        <div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      <span style={{ ...mono, color: C.tinta }} className="text-sm whitespace-nowrap">{fMXN(p.precio || 0)}{p.moneda === "USD" ? " USD" : ""}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Editor de Cotización (partidas + totales) ────────────────────── */
+function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEliminar, onCerrar }) {
+  const nueva = !cot.id;
+  const [d, setD] = useState({
+    cliente: cot.cliente || "", clienteId: cot.clienteId || "",
+    folio: cot.folio || folioAuto || "", fecha: cot.fecha || hoy(),
+    estado: cot.estado || "borrador", moneda: cot.moneda || "MXN",
+    iva: cot.iva !== false, notas: cot.notas || "",
+  });
+  const [parts, setParts] = useState(() => (cot.partidas || []).map((p) => ({ ...p, id: p.id || uid() })));
+  const [pickProd, setPickProd] = useState(false);
+  const setP = (i, campos) => setParts(parts.map((p, j) => j === i ? { ...p, ...campos } : p));
+  const delP = (i) => setParts(parts.filter((_, j) => j !== i));
+  const addLibre = () => setParts([...parts, { id: uid(), descripcion: "", cantidad: "1", precio: "", descuento: "" }]);
+  const addProd = (p) => { setParts([...parts, { id: uid(), descripcion: p.descripcion, codigo: p.codigo || "", cantidad: "1", precio: p.precio ?? "", descuento: "" }]); setPickProd(false); };
+  const sub = parts.reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
+  const iva = d.iva ? sub * 0.16 : 0;
+  const total = sub + iva;
+  const cur = d.moneda === "USD" ? " USD" : "";
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold">{nueva ? "Nueva cotización" : "Editar cotización"}</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          <div>
+            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            {d.cliente.trim() && !d.clienteId ? (() => {
+              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(d.cliente.trim().toLowerCase())).slice(0, 5);
+              return ms.length ? <div className="mt-1 space-y-1">{ms.map((c) => <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}><Building2 size={12} style={{ color: C.azul }} /> Vincular a: {c.nombre}</button>)}</div> : null;
+            })() : null}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={d.folio} onChange={(e) => setD({ ...d, folio: e.target.value })} placeholder="Folio" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+            <input type="date" value={d.fecha} onChange={(e) => setD({ ...d, fecha: e.target.value })} className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+          </div>
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {ESTADOS_COTIZACION.map((s) => <button key={s.id} onClick={() => setD({ ...d, estado: s.id })} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold" style={{ borderColor: d.estado === s.id ? s.color : C.borde, color: d.estado === s.id ? s.color : C.dim, background: d.estado === s.id ? "#fff" : "transparent" }}>{s.label}</button>)}
+            <div className="ml-auto flex rounded-lg overflow-hidden border" style={{ borderColor: C.borde }}>
+              {["MXN", "USD"].map((m) => <button key={m} onClick={() => setD({ ...d, moneda: m })} className="text-xs px-2.5 py-1.5 font-semibold" style={{ background: d.moneda === m ? C.tinta : "#fff", color: d.moneda === m ? "#fff" : C.dim }}>{m}</button>)}
+            </div>
+          </div>
+          <div className="rounded-xl border p-2 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Partidas</div>
+              <div className="flex gap-1.5">
+                <button onClick={() => setPickProd(true)} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Package size={12} /> Catálogo</button>
+                <button onClick={addLibre} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Línea</button>
+              </div>
+            </div>
+            {parts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Agrega productos del catálogo o líneas libres.</div> : parts.map((p, i) => {
+              const imp = (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100);
+              return (
+                <div key={p.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: C.borde, background: "#fff" }}>
+                  <div className="flex gap-1.5">
+                    <input value={p.descripcion} onChange={(e) => setP(i, { descripcion: e.target.value })} placeholder="Descripción" className="flex-1 rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                    <button onClick={() => delP(i)} className="px-2 rounded-lg border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={14} /></button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 items-center">
+                    <input value={p.cantidad} onChange={(e) => setP(i, { cantidad: e.target.value })} placeholder="Cant." inputMode="decimal" className="rounded-lg px-2 py-1.5 text-sm text-center" style={{ ...inp, ...mono }} />
+                    <input value={p.precio} onChange={(e) => setP(i, { precio: e.target.value })} placeholder="P.unit" inputMode="decimal" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                    <input value={p.descuento} onChange={(e) => setP(i, { descuento: e.target.value })} placeholder="Desc%" inputMode="decimal" className="rounded-lg px-2 py-1.5 text-sm text-center" style={{ ...inp, ...mono }} />
+                    <div className="text-sm text-right font-semibold" style={{ ...mono, color: C.tinta }}>{fMXN(imp)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="rounded-xl border p-3 space-y-1" style={{ borderColor: C.borde, background: "#fff" }}>
+            <div className="flex justify-between text-sm"><span style={{ color: C.dim }}>Subtotal</span><span style={mono}>{fMXN(sub)}{cur}</span></div>
+            <div className="flex justify-between text-sm items-center">
+              <button onClick={() => setD({ ...d, iva: !d.iva })} className="flex items-center gap-1.5" style={{ color: C.dim }}>
+                <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: C.borde, background: d.iva ? C.tinta : "#fff" }}>{d.iva ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
+                IVA 16%
+              </button>
+              <span style={mono}>{fMXN(iva)}{cur}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold pt-1 border-t" style={{ borderColor: C.borde, color: C.tinta }}><span>Total</span><span style={mono}>{fMXN(total)}{cur}</span></div>
+          </div>
+          <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas / condiciones (tiempo de entrega, vigencia…)" rows={2} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="flex gap-2">
+            <button onClick={() => d.cliente.trim() && onGuardar({ ...cot, ...d, partidas: parts })} className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>{nueva ? "Crear cotización" : "Guardar cambios"}</button>
+            {!nueva && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
+          </div>
+        </div>
+      </div>
+      {pickProd && (
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={() => setPickProd(false)}>
+          <div className="rounded-t-2xl max-h-[70vh] overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+              <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold">Elegir del catálogo</div>
+              <button onClick={() => setPickProd(false)}><X size={20} style={{ color: C.dim }} /></button>
+            </div>
+            <div className="p-4 space-y-1.5 pb-8">
+              {(productos || []).length === 0 ? <div className="text-sm text-center py-4" style={{ color: C.dim }}>El catálogo está vacío. Llénalo desde el botón «Catálogo» en la pestaña Cotiza.</div> : (productos || []).map((p) => (
+                <button key={p.id} onClick={() => addProd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                  <div className="flex-1 min-w-0"><div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div><div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca].filter(Boolean).join(" · ")}</div></div>
+                  <span style={{ ...mono, color: C.tinta }} className="text-sm">{fMXN(p.precio || 0)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -1319,6 +1506,8 @@ export default function App() {
   const [oppEdit, setOppEdit] = useState(null);
   const [cliEdit, setCliEdit] = useState(null);
   const [buscarCli, setBuscarCli] = useState("");
+  const [cotEdit, setCotEdit] = useState(null);
+  const [catOpen, setCatOpen] = useState(false);
   const [verCierre, setVerCierre] = useState(false);
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
@@ -1541,6 +1730,23 @@ export default function App() {
     guardar({ ...data, clientes: (data.clientes || []).filter((c) => c.id !== id), contactos: (data.contactos || []).filter((ct) => ct.clienteId !== id), actividades: (data.actividades || []).filter((a) => a.clienteId !== id) });
     setCliEdit(null);
   };
+  const guardarProducto = (p) => {
+    const id = p.id || uid();
+    const productos = p.id
+      ? (data.productos || []).map((x) => x.id === id ? { ...x, ...p } : x)
+      : [{ ...p, id, creada: new Date().toISOString() }, ...(data.productos || [])];
+    guardar({ ...data, productos });
+  };
+  const delProducto = (id) => guardar({ ...data, productos: (data.productos || []).filter((p) => p.id !== id) });
+  const guardarCotizacion = (c) => {
+    const ts = new Date().toISOString();
+    const id = c.id || uid();
+    const cotizaciones = c.id
+      ? (data.cotizaciones || []).map((x) => x.id === id ? { ...x, ...c, actualizada: ts } : x)
+      : [{ ...c, id, creada: ts, actualizada: ts }, ...(data.cotizaciones || [])];
+    guardar({ ...data, cotizaciones }); setCotEdit(null);
+  };
+  const delCotizacion = (id) => { guardar({ ...data, cotizaciones: (data.cotizaciones || []).filter((c) => c.id !== id) }); setCotEdit(null); };
   const setOppCampos = (id, campos) => guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === id ? { ...o, ...campos } : o) });
   const guardarVisita = (v) => {
     const ts = new Date().toISOString();
@@ -1698,6 +1904,7 @@ export default function App() {
     { id: "tiempo", icon: Timer, label: "Tiempo" },
     { id: "pipeline", icon: Briefcase, label: "Pipeline" },
     { id: "clientes", icon: Building2, label: "Clientes" },
+    { id: "cotiza", icon: FileText, label: "Cotiza" },
     { id: "metas", icon: Target, label: "Metas" },
     { id: "cierre", icon: FileDown, label: "Cierre" },
     { id: "comisiones", icon: Percent, label: "Comis." },
@@ -2118,6 +2325,42 @@ export default function App() {
             <div className="text-xs mt-3 px-1" style={{ color: C.dim }}>Las oportunidades se ligan al cliente por su nombre. Escríbelo igual en el pipeline y en la ficha para verlas juntas.</div>
           </div>
         )}
+        {tab === "cotiza" && (
+          <div>
+            <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Cotizaciones ({(data.cotizaciones || []).length})</div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setCatOpen(true)} className="px-2.5 py-2 rounded-xl border font-semibold flex items-center gap-1.5 text-sm" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Package size={15} /> Catálogo</button>
+                  <button onClick={() => setCotEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}><Plus size={16} /> Nueva</button>
+                </div>
+              </div>
+              {(data.cotizaciones || []).length === 0 ? (
+                <div className="text-sm text-center py-6" style={{ color: C.dim }}>Sin cotizaciones. Toca «Nueva» para crear la primera. Tip: llena tu «Catálogo» para armarlas en segundos.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {(data.cotizaciones || []).map((c) => {
+                    const st = ESTADOS_COTIZACION.find((s) => s.id === c.estado) || ESTADOS_COTIZACION[0];
+                    const t = totalesCot(c);
+                    return (
+                      <button key={c.id} onClick={() => setCotEdit(c)} className="w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                        <FileText size={18} style={{ color: st.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.cliente || "Sin cliente"}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[c.folio, c.fecha, `${(c.partidas || []).length} part.`].filter(Boolean).join(" · ")}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold" style={mono}>{fMXN(t.total)}{c.moneda === "USD" ? " USD" : ""}</div>
+                          <span className="text-xs font-semibold" style={{ color: st.color }}>{st.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {tab === "metas" && (
           <div>
             <div className="text-xs" style={{ color: C.dim }}>Metas y proyectos. Toca una meta para ponerle fecha de inicio y fin: las que tengan ambas aparecen en el cronograma. Revísalas cada viernes — una meta sin acción es solo un deseo.</div>
@@ -2506,6 +2749,12 @@ export default function App() {
       )}
       {cliEdit !== null && (
         <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
+      )}
+      {cotEdit !== null && (
+        <CotizacionEditor cot={cotEdit} clientes={data.clientes || []} productos={data.productos || []} folioAuto={`COT-${String((data.cotizaciones || []).length + 1).padStart(4, "0")}`} onGuardar={guardarCotizacion} onEliminar={() => delCotizacion(cotEdit.id)} onCerrar={() => setCotEdit(null)} />
+      )}
+      {catOpen && (
+        <CatalogoSheet productos={data.productos || []} onGuardarProd={guardarProducto} onEliminarProd={delProducto} onCerrar={() => setCatOpen(false)} />
       )}
     </div>
   );

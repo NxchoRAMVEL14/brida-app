@@ -114,6 +114,16 @@ const ACTIVIDAD = traductor(
   { clienteId: "cliente_id", oportunidadId: "oportunidad_id", tipo: "tipo",
     fecha: "fecha", nota: "nota", resultado: "resultado" }
 );
+const PRODUCTO = traductor(
+  { codigo: "codigo", descripcion: "descripcion", marca: "marca", unidad: "unidad",
+    precio: "precio", moneda: "moneda", margen: "margen" },
+  ["precio", "margen"]
+);
+const COTIZACION = traductor(
+  { cliente: "cliente", clienteId: "cliente_id", oportunidadId: "oportunidad_id",
+    folio: "folio", fecha: "fecha", estado: "estado", moneda: "moneda",
+    iva: "iva", notas: "notas", partidas: "partidas" }
+);
 
 function visitaAFila(v) {
   const f = {
@@ -152,7 +162,7 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 // ═══════════════════════ LECTURA (nube → bloque) ═════════════════
 // Devuelve { data: <bloque como lo espera la app>, actualizado }.
 export async function leerNube(uid) {
-  const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, raju] = await Promise.all([
+  const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot, raju] = await Promise.all([
     sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false }),
     sb.from("visitas").select("*").order("fecha", { ascending: false }),
     sb.from("tareas").select("*").order("fecha", { ascending: true }),
@@ -161,9 +171,11 @@ export async function leerNube(uid) {
     sb.from("clientes").select("*").order("actualizada", { ascending: false }),
     sb.from("contactos").select("*").order("creada", { ascending: true }),
     sb.from("actividades").select("*").order("fecha", { ascending: false }),
+    sb.from("productos").select("*").order("descripcion", { ascending: true }),
+    sb.from("cotizaciones").select("*").order("actualizada", { ascending: false }),
     sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle(),
   ]);
-  for (const r of [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract]) if (r.error) throw r.error;
+  for (const r of [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot]) if (r.error) throw r.error;
   if (raju.error) throw raju.error;
 
   const metas = { corto: [], mediano: [], largo: [] };
@@ -183,6 +195,8 @@ export async function leerNube(uid) {
     clientes: rcli.data.map(CLIENTE.aApp),
     contactos: rcon.data.map(CONTACTO.aApp),
     actividades: ract.data.map(ACTIVIDAD.aApp),
+    productos: rprod.data.map(PRODUCTO.aApp),
+    cotizaciones: rcot.data.map(COTIZACION.aApp),
     mejoras: aj.mejoras || [],
     timer: aj.timer || null,
     tipoCambio: aj.tipo_cambio ?? 17,
@@ -279,6 +293,24 @@ export async function subirNube(uid, estado) {
     if (error) throw error;
   }
   await borrarFaltantes("actividades", "vendedor_id", uid, acts.map((a) => a.id));
+
+  // — PRODUCTOS (catálogo) —
+  const prods = estado.productos || [];
+  if (prods.length) {
+    const filas = prods.map((p) => ({ ...PRODUCTO.aFila(p), id: p.id }));
+    const { error } = await sb.from("productos").upsert(filas, { onConflict: "id" });
+    if (error) throw error;
+  }
+  await borrarFaltantes("productos", "vendedor_id", uid, prods.map((p) => p.id));
+
+  // — COTIZACIONES (partidas en jsonb) —
+  const cots = estado.cotizaciones || [];
+  if (cots.length) {
+    const filas = cots.map((c) => ({ ...COTIZACION.aFila(c), id: c.id }));
+    const { error } = await sb.from("cotizaciones").upsert(filas, { onConflict: "id" });
+    if (error) throw error;
+  }
+  await borrarFaltantes("cotizaciones", "vendedor_id", uid, cots.map((c) => c.id));
 
   // — AJUSTES (cronómetro, tipo de cambio, ideas de mejora) —
   const { error: eaj } = await sb.from("ajustes").upsert({

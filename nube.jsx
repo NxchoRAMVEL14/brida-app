@@ -81,7 +81,7 @@ function traductor(mapa, nulls = []) {
 
 const OPP = traductor(
   {
-    cliente: "cliente", titulo: "titulo", etapa: "etapa", monto: "monto", moneda: "moneda",
+    cliente: "cliente", clienteId: "cliente_id", titulo: "titulo", etapa: "etapa", monto: "monto", moneda: "moneda",
     montoOrig: "monto_orig", margen: "margen", marca: "marca", plaza: "plaza", vendedor: "vendedor",
     comisionPct: "comision_pct", comisionPagada: "comision_pagada",
     numCotizacion: "num_cotizacion", ocCliente: "oc_cliente", numPedido: "num_pedido", numFactura: "num_factura",
@@ -109,6 +109,10 @@ const CLIENTE = traductor(
 const CONTACTO = traductor(
   { clienteId: "cliente_id", nombre: "nombre", puesto: "puesto", telefono: "telefono",
     correo: "correo", whatsapp: "whatsapp", rolDecision: "rol_decision", notas: "notas" }
+);
+const ACTIVIDAD = traductor(
+  { clienteId: "cliente_id", oportunidadId: "oportunidad_id", tipo: "tipo",
+    fecha: "fecha", nota: "nota", resultado: "resultado" }
 );
 
 function visitaAFila(v) {
@@ -148,7 +152,7 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 // ═══════════════════════ LECTURA (nube → bloque) ═════════════════
 // Devuelve { data: <bloque como lo espera la app>, actualizado }.
 export async function leerNube(uid) {
-  const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, raju] = await Promise.all([
+  const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, raju] = await Promise.all([
     sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false }),
     sb.from("visitas").select("*").order("fecha", { ascending: false }),
     sb.from("tareas").select("*").order("fecha", { ascending: true }),
@@ -156,9 +160,10 @@ export async function leerNube(uid) {
     sb.from("metas").select("*").order("creada", { ascending: true }),
     sb.from("clientes").select("*").order("actualizada", { ascending: false }),
     sb.from("contactos").select("*").order("creada", { ascending: true }),
+    sb.from("actividades").select("*").order("fecha", { ascending: false }),
     sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle(),
   ]);
-  for (const r of [ropp, rvis, rtar, rtie, rmet, rcli, rcon]) if (r.error) throw r.error;
+  for (const r of [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract]) if (r.error) throw r.error;
   if (raju.error) throw raju.error;
 
   const metas = { corto: [], mediano: [], largo: [] };
@@ -177,6 +182,7 @@ export async function leerNube(uid) {
     metas,
     clientes: rcli.data.map(CLIENTE.aApp),
     contactos: rcon.data.map(CONTACTO.aApp),
+    actividades: ract.data.map(ACTIVIDAD.aApp),
     mejoras: aj.mejoras || [],
     timer: aj.timer || null,
     tipoCambio: aj.tipo_cambio ?? 17,
@@ -264,6 +270,15 @@ export async function subirNube(uid, estado) {
     if (error) throw error;
   }
   await borrarFaltantes("contactos", "vendedor_id", uid, cons.map((c) => c.id));
+
+  // — ACTIVIDADES (bitácora) —
+  const acts = estado.actividades || [];
+  if (acts.length) {
+    const filas = acts.map((a) => ({ ...ACTIVIDAD.aFila(a), id: a.id }));
+    const { error } = await sb.from("actividades").upsert(filas, { onConflict: "id" });
+    if (error) throw error;
+  }
+  await borrarFaltantes("actividades", "vendedor_id", uid, acts.map((a) => a.id));
 
   // — AJUSTES (cronómetro, tipo de cambio, ideas de mejora) —
   const { error: eaj } = await sb.from("ajustes").upsert({

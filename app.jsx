@@ -83,7 +83,7 @@ const descargar = (nombre, contenido, tipo = "text/csv;charset=utf-8;") => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
+const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], actividades: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
 const RESULTADOS = [
   { id: "pendiente", label: "Pendiente", color: "#5E6E7E" },
   { id: "interes", label: "Interés", color: "#3D74B8" },
@@ -109,6 +109,13 @@ const ROLES_DECISION = [
   { id: "influye", label: "Influye" },
   { id: "usa", label: "Usa" },
   { id: "paga", label: "Paga" },
+];
+const TIPOS_ACTIVIDAD = [
+  { id: "llamada", label: "Llamada" },
+  { id: "correo", label: "Correo" },
+  { id: "reunion", label: "Reunión" },
+  { id: "visita", label: "Visita" },
+  { id: "nota", label: "Nota" },
 ];
 
 /* ── Google Calendar (URL pre-llenada) ────────────────────────────── */
@@ -643,10 +650,10 @@ function SeguimientoSheet({ opps, onCerrar }) {
   );
 }
 
-function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc }) {
+function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc, clientes }) {
   const nueva = !opp.id;
   const [d, setD] = useState({
-    cliente: opp.cliente || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
+    cliente: opp.cliente || "", clienteId: opp.clienteId || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
     monto: opp.moneda === "USD" && opp.montoOrig != null ? opp.montoOrig : (opp.monto ?? ""),
     moneda: opp.moneda || "MXN", marca: opp.marca || "", plaza: opp.plaza || "", vendedor: opp.vendedor || "",
     proximaAccion: opp.proximaAccion || "", fechaAccion: opp.fechaAccion || "", notas: opp.notas || "",
@@ -662,7 +669,27 @@ function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc }) {
           <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
         </div>
         <div className="p-4 space-y-3 pb-8">
-          <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div>
+            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            {d.cliente.trim() && !d.clienteId ? (() => {
+              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(d.cliente.trim().toLowerCase())).slice(0, 5);
+              return ms.length ? (
+                <div className="mt-1 space-y-1">
+                  {ms.map((c) => (
+                    <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}>
+                      <Building2 size={12} style={{ color: C.azul }} /> Vincular a: {c.nombre}
+                    </button>
+                  ))}
+                </div>
+              ) : null;
+            })() : null}
+            {d.clienteId ? (
+              <div className="mt-1 text-xs flex items-center gap-1.5" style={{ color: C.verde }}>
+                <Check size={12} /> Vinculado a cliente
+                <button onClick={() => setD({ ...d, clienteId: "" })} className="underline" style={{ color: C.dim }}>desvincular</button>
+              </div>
+            ) : null}
+          </div>
           <input value={d.titulo} onChange={(e) => setD({ ...d, titulo: e.target.value })} placeholder="Proyecto o descripción" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           <div>
             <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Etapa</div>
@@ -768,7 +795,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc }) {
 }
 
 /* ── Editor de Cliente (con sus contactos) ────────────────────────── */
-function ClienteEditor({ cliente, contactos, opps, onGuardar, onEliminar, onCerrar }) {
+function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEliminar, onCerrar }) {
   const nuevo = !cliente.id;
   const [d, setD] = useState({
     nombre: cliente.nombre || "", tipo: cliente.tipo || "", estado: cliente.estado || "prospecto",
@@ -776,7 +803,9 @@ function ClienteEditor({ cliente, contactos, opps, onGuardar, onEliminar, onCerr
     direccion: cliente.direccion || "", notas: cliente.notas || "",
   });
   const [cts, setCts] = useState(() => (contactos || []).filter((c) => c.clienteId === cliente.id).map((c) => ({ ...c })));
-  const relacionadas = (opps || []).filter((o) => cliente.nombre && (o.cliente || "").trim().toLowerCase() === (cliente.nombre || "").trim().toLowerCase());
+  const [acts, setActs] = useState(() => (actividades || []).filter((a) => a.clienteId === cliente.id).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((a) => ({ ...a })));
+  const [na, setNa] = useState({ tipo: "llamada", fecha: hoy(), nota: "" });
+  const relacionadas = (opps || []).filter((o) => (cliente.id && o.clienteId === cliente.id) || (!o.clienteId && cliente.nombre && (o.cliente || "").trim().toLowerCase() === (cliente.nombre || "").trim().toLowerCase()));
   const addContacto = () => setCts([...cts, { id: uid(), nombre: "", puesto: "", telefono: "", correo: "", whatsapp: "", rolDecision: "" }]);
   const updContacto = (i, campos) => setCts(cts.map((c, j) => j === i ? { ...c, ...campos } : c));
   const delContacto = (i) => setCts(cts.filter((_, j) => j !== i));
@@ -853,9 +882,43 @@ function ClienteEditor({ cliente, contactos, opps, onGuardar, onEliminar, onCerr
               ))}
             </div>
           ) : null}
+          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}><CalendarDays size={12} /> Actividades / bitácora</div>
+            <div className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: C.borde, background: "#fff" }}>
+              <div className="flex flex-wrap gap-1">
+                {TIPOS_ACTIVIDAD.map((t) => (
+                  <button key={t.id} onClick={() => setNa({ ...na, tipo: t.id })} className="text-xs px-2 py-1 rounded border font-semibold"
+                    style={{ borderColor: na.tipo === t.id ? C.tinta : C.borde, color: na.tipo === t.id ? C.tinta : C.dim, background: na.tipo === t.id ? C.fondo : "transparent" }}>{t.label}</button>
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <input type="date" value={na.fecha} onChange={(e) => setNa({ ...na, fecha: e.target.value })} className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                <input value={na.nota} onChange={(e) => setNa({ ...na, nota: e.target.value })} placeholder="¿Qué pasó o se acordó?" className="flex-1 rounded-lg px-2 py-1.5 text-sm" style={inp} />
+              </div>
+              <button onClick={() => { if (na.nota.trim()) { setActs([{ id: uid(), tipo: na.tipo, fecha: na.fecha, nota: na.nota.trim() }, ...acts]); setNa({ tipo: "llamada", fecha: hoy(), nota: "" }); } }}
+                className="w-full text-xs py-1.5 rounded-lg font-semibold" style={{ background: na.nota.trim() ? C.tinta : C.borde, color: "#fff" }}>Registrar actividad</button>
+            </div>
+            {acts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin actividades. Registra cada llamada, correo o reunión para no perder el hilo.</div> : (
+              <div className="space-y-1">
+                {acts.map((a, i) => {
+                  const t = TIPOS_ACTIVIDAD.find((x) => x.id === a.tipo) || TIPOS_ACTIVIDAD[0];
+                  return (
+                    <div key={a.id} className="flex items-start gap-2 text-sm py-1 border-b last:border-0" style={{ borderColor: C.borde }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-semibold whitespace-nowrap" style={{ background: C.fondo, color: C.dim }}>{t.label}</span>
+                      <div className="flex-1 min-w-0">
+                        <div style={{ color: C.tinta }}>{a.nota}</div>
+                        <div className="text-xs" style={{ ...mono, color: C.dim }}>{a.fecha}</div>
+                      </div>
+                      <button onClick={() => setActs(acts.filter((_, j) => j !== i))} style={{ color: C.rojo }}><Trash2 size={13} /></button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas de la cuenta" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           <div className="flex gap-2 pt-1">
-            <button onClick={() => d.nombre.trim() && onGuardar({ ...cliente, ...d }, cts.filter((c) => c.nombre.trim()))}
+            <button onClick={() => d.nombre.trim() && onGuardar({ ...cliente, ...d }, cts.filter((c) => c.nombre.trim()), acts)}
               className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.nombre.trim() ? C.tinta : C.borde, color: "#fff" }}>
               {nuevo ? "Crear cliente" : "Guardar cambios"}
             </button>
@@ -1034,7 +1097,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
       <div className="w-full max-w-md mx-auto flex-1 flex flex-col">
         <div className="flex items-center justify-center gap-2 mt-1">
           <Zap size={18} style={{ color: C.ambar }} />
-          <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-base font-bold uppercase"><span style={{ color: "#fff" }}>Centro de</span> <span style={{ color: C.ambar }}>Control</span></span>
+          <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-base font-bold uppercase"><span style={{ color: "#fff" }}>Bri</span><span style={{ color: C.ambar }}>da</span></span>
         </div>
         <div className="text-center mt-6">
           <div className="text-2xl font-semibold" style={{ color: "#fff" }}>{fHoyCompleto()}</div>
@@ -1462,7 +1525,7 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
-  const guardarCliente = (c, cts) => {
+  const guardarCliente = (c, cts, acts) => {
     const ts = new Date().toISOString();
     const id = c.id || uid();
     const clientes = c.id
@@ -1470,10 +1533,12 @@ export default function App() {
       : [{ ...c, id, creada: ts, actualizada: ts }, ...(data.clientes || [])];
     const otros = (data.contactos || []).filter((ct) => ct.clienteId !== id);
     const nuevos = (cts || []).map((ct) => ({ ...ct, id: ct.id || uid(), clienteId: id }));
-    guardar({ ...data, clientes, contactos: [...otros, ...nuevos] }); setCliEdit(null);
+    const otrosAct = (data.actividades || []).filter((a) => a.clienteId !== id);
+    const nuevosAct = (acts || []).map((a) => ({ ...a, id: a.id || uid(), clienteId: id }));
+    guardar({ ...data, clientes, contactos: [...otros, ...nuevos], actividades: [...otrosAct, ...nuevosAct] }); setCliEdit(null);
   };
   const delCliente = (id) => {
-    guardar({ ...data, clientes: (data.clientes || []).filter((c) => c.id !== id), contactos: (data.contactos || []).filter((ct) => ct.clienteId !== id) });
+    guardar({ ...data, clientes: (data.clientes || []).filter((c) => c.id !== id), contactos: (data.contactos || []).filter((ct) => ct.clienteId !== id), actividades: (data.actividades || []).filter((a) => a.clienteId !== id) });
     setCliEdit(null);
   };
   const setOppCampos = (id, campos) => guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === id ? { ...o, ...campos } : o) });
@@ -1657,7 +1722,7 @@ export default function App() {
             <button onClick={() => setVerIntro(true)} aria-label="Volver a la pantalla de inicio" className="flex items-center gap-2">
               <Zap size={18} style={{ color: C.ambar }} />
               <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-lg font-bold uppercase" >
-                <span style={{ color: "#fff" }}>Centro de</span> <span style={{ color: C.ambar }}>Control</span>
+                <span style={{ color: "#fff" }}>Bri</span><span style={{ color: C.ambar }}>da</span>
               </span>
             </button>
             <div className="flex items-center gap-2">
@@ -1858,6 +1923,36 @@ export default function App() {
         {/* ════ PIPELINE ════ */}
         {tab === "pipeline" && (
           <div>
+            {(() => {
+              const H = hoy();
+              const d7 = new Date(); d7.setDate(d7.getDate() + 7);
+              const en7 = `${d7.getFullYear()}-${String(d7.getMonth() + 1).padStart(2, "0")}-${String(d7.getDate()).padStart(2, "0")}`;
+              const seg = (data.pipeline || []).filter((o) => o.fechaAccion && !["facturado", "perdido"].includes(o.etapa));
+              const venc = seg.filter((o) => o.fechaAccion < H).sort((a, b) => a.fechaAccion.localeCompare(b.fechaAccion));
+              const hoyS = seg.filter((o) => o.fechaAccion === H);
+              const prox = seg.filter((o) => o.fechaAccion > H && o.fechaAccion <= en7).sort((a, b) => a.fechaAccion.localeCompare(b.fechaAccion));
+              if (!venc.length && !hoyS.length && !prox.length) return null;
+              const fila = (o, col) => (
+                <button key={o.id} onClick={() => setOppEdit(o)} className="w-full text-left flex items-center gap-2 py-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: col }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate" style={{ color: C.tinta }}>{o.cliente}{o.titulo ? ` — ${o.titulo}` : ""}</div>
+                    <div className="text-xs truncate" style={{ color: C.dim }}>{o.proximaAccion || "Próxima acción"}</div>
+                  </div>
+                  <span className="text-xs whitespace-nowrap" style={{ ...mono, color: col }}>{o.fechaAccion.slice(5)}</span>
+                </button>
+              );
+              return (
+                <div className="rounded-xl border p-3 mb-3" style={{ borderColor: C.borde, background: C.panel }}>
+                  <div className="text-xs uppercase font-semibold mb-1 flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>
+                    <Send size={12} style={{ color: C.ambar }} /> Seguimiento
+                  </div>
+                  {venc.length ? <><div className="text-xs font-semibold mt-1" style={{ color: C.rojo }}>Vencidas ({venc.length})</div>{venc.slice(0, 6).map((o) => fila(o, C.rojo))}</> : null}
+                  {hoyS.length ? <><div className="text-xs font-semibold mt-1" style={{ color: C.ambar }}>Para hoy ({hoyS.length})</div>{hoyS.map((o) => fila(o, C.ambar))}</> : null}
+                  {prox.length ? <><div className="text-xs font-semibold mt-1" style={{ color: C.dim }}>Próximos 7 días ({prox.length})</div>{prox.slice(0, 6).map((o) => fila(o, C.azul))}</> : null}
+                </div>
+              );
+            })()}
             <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Resumen del pipeline</div>
@@ -2407,10 +2502,10 @@ export default function App() {
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
 
       {oppEdit !== null && (
-        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} />
+        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} />
       )}
       {cliEdit !== null && (
-        <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
+        <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
       )}
     </div>
   );

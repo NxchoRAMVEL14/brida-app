@@ -54,6 +54,34 @@ export async function salir() {
   await sb.auth.signOut();
 }
 
+// Perfil del usuario (para saber su rol: vendedor / gerente / admin)
+export async function miPerfil() {
+  const { data: u } = await sb.auth.getUser();
+  if (!u?.user) return null;
+  const { data, error } = await sb.from("perfiles").select("*").eq("id", u.user.id).maybeSingle();
+  if (error || !data) return { rol: "vendedor", nombre: (u.user.email || "").split("@")[0], email: u.user.email };
+  return { ...data, email: u.user.email };
+}
+
+// Carga de EQUIPO (solo lectura). El RLS devuelve todas las filas si el
+// usuario es gerente/admin, o solo las suyas si es vendedor. No escribe nada.
+export async function cargarEquipo() {
+  const q = (b) => b.then((r) => r).catch((e) => ({ error: { message: String((e && e.message) || e) } }));
+  const [rop, rper] = await Promise.all([
+    q(sb.from("oportunidades").select("*").eq("archivada", false)),
+    q(sb.from("perfiles").select("id,nombre,rol,plaza")),
+  ]);
+  const perfiles = {};
+  ((rper && rper.data) || []).forEach((p) => { perfiles[p.id] = p; });
+  const opps = ((rop && rop.data) || []).map((r) => {
+    const o = OPP.aApp(r);
+    o.vendedorId = r.vendedor_id;
+    o.vendedorNombre = (perfiles[r.vendedor_id] || {}).nombre || "Sin asignar";
+    return o;
+  });
+  return { opps, perfiles: (rper && rper.data) || [] };
+}
+
 // ─────────────── traductor camelCase ↔ snake_case ────────────────
 // Mapas explícitos (evita errores en campos como fechaOC). `nulls` = los
 // campos numéricos/fecha cuyo "" del formulario se manda como null.
@@ -165,16 +193,16 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 export async function leerNube(uid) {
   const q = (b) => b.then((r) => r).catch((e) => ({ error: { message: String((e && e.message) || e) } }));
   const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot, raju] = await Promise.all([
-    q(sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false })),
-    q(sb.from("visitas").select("*").order("fecha", { ascending: false })),
-    q(sb.from("tareas").select("*").order("fecha", { ascending: true })),
-    q(sb.from("tiempo").select("*").order("fecha", { ascending: false })),
-    q(sb.from("metas").select("*").order("creada", { ascending: true })),
-    q(sb.from("clientes").select("*").order("actualizada", { ascending: false })),
-    q(sb.from("contactos").select("*").order("creada", { ascending: true })),
-    q(sb.from("actividades").select("*").order("fecha", { ascending: false })),
-    q(sb.from("productos").select("*").order("descripcion", { ascending: true })),
-    q(sb.from("cotizaciones").select("*").order("actualizada", { ascending: false })),
+    q(sb.from("oportunidades").select("*").eq("vendedor_id", uid).eq("archivada", false).order("actualizada", { ascending: false })),
+    q(sb.from("visitas").select("*").eq("vendedor_id", uid).order("fecha", { ascending: false })),
+    q(sb.from("tareas").select("*").eq("user_id", uid).order("fecha", { ascending: true })),
+    q(sb.from("tiempo").select("*").eq("user_id", uid).order("fecha", { ascending: false })),
+    q(sb.from("metas").select("*").eq("user_id", uid).order("creada", { ascending: true })),
+    q(sb.from("clientes").select("*").eq("vendedor_id", uid).order("actualizada", { ascending: false })),
+    q(sb.from("contactos").select("*").eq("vendedor_id", uid).order("creada", { ascending: true })),
+    q(sb.from("actividades").select("*").eq("vendedor_id", uid).order("fecha", { ascending: false })),
+    q(sb.from("productos").select("*").eq("vendedor_id", uid).order("descripcion", { ascending: true })),
+    q(sb.from("cotizaciones").select("*").eq("vendedor_id", uid).order("actualizada", { ascending: false })),
     q(sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle()),
   ]);
   [["oportunidades", ropp], ["visitas", rvis], ["tareas", rtar], ["tiempo", rtie], ["metas", rmet], ["clientes", rcli], ["contactos", rcon], ["actividades", ract], ["productos", rprod], ["cotizaciones", rcot], ["ajustes", raju]]

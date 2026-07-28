@@ -4,7 +4,7 @@ import {
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
   Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3
 } from "lucide-react";
-import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
+import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos, miPerfil, cargarEquipo } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
@@ -1344,6 +1344,93 @@ function AnalisisSheet({ pipeline, onCerrar }) {
   );
 }
 
+/* ── Tablero de Gerente (cartera del equipo, solo lectura) ────────── */
+function TableroGerente({ onCerrar }) {
+  const [datos, setDatos] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => { cargarEquipo().then(setDatos).catch(() => setErr(true)); }, []);
+  const Marco = ({ children }) => (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><Users size={16} /> Tablero de gerente</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">{children}</div>
+      </div>
+    </div>
+  );
+  if (err) return <Marco><div className="text-sm text-center py-8" style={{ color: C.rojo }}>No se pudo cargar la cartera del equipo. Revisa tu conexión.</div></Marco>;
+  if (!datos) return <Marco><div className="text-sm text-center py-8" style={{ color: C.dim }}>Cargando cartera del equipo…</div></Marco>;
+
+  const opps = datos.opps || [];
+  const activas = opps.filter((o) => !["facturado", "perdido"].includes(o.etapa));
+  const facturado = opps.filter((o) => o.etapa === "facturado");
+  const totActivo = activas.reduce((s, o) => s + (o.monto || 0), 0);
+  const totFacturado = facturado.reduce((s, o) => s + (o.monto || 0), 0);
+  const pronostico = activas.reduce((s, o) => s + (o.monto || 0) * (PROB_ETAPA[o.etapa] || 0), 0);
+  const porVend = {};
+  opps.forEach((o) => {
+    const k = o.vendedorNombre || "Sin asignar";
+    if (!porVend[k]) porVend[k] = { nombre: k, activo: 0, ganado: 0, nActivas: 0, nGanadas: 0 };
+    if (o.etapa === "facturado") { porVend[k].ganado += o.monto || 0; porVend[k].nGanadas++; }
+    else if (o.etapa !== "perdido") { porVend[k].activo += o.monto || 0; porVend[k].nActivas++; }
+  });
+  const ranking = Object.values(porVend).sort((a, b) => (b.activo + b.ganado) - (a.activo + a.ganado));
+  const embudo = ETAPAS.filter((e) => ["visita", "cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(e.id))
+    .map((e) => { const os = opps.filter((o) => o.etapa === e.id); return { ...e, n: os.length, monto: os.reduce((s, o) => s + (o.monto || 0), 0) }; });
+  const maxN = Math.max(1, ...embudo.map((e) => e.n));
+  const maxVend = Math.max(1, ...ranking.map((v) => v.activo + v.ganado));
+
+  return (
+    <Marco>
+      <div className="flex gap-2">
+        <div className="rounded-xl border p-3 flex-1" style={{ borderColor: C.borde, background: "#fff" }}>
+          <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim }}>Pipeline del equipo</div>
+          <div className="text-lg font-bold" style={{ ...mono, color: C.azul }}>{fMXN(totActivo)}</div>
+          <div className="text-xs" style={{ color: C.dim }}>{activas.length} activas · {ranking.length} vendedor{ranking.length === 1 ? "" : "es"}</div>
+        </div>
+        <div className="rounded-xl border p-3 flex-1" style={{ borderColor: C.borde, background: "#fff" }}>
+          <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim }}>Pronóstico</div>
+          <div className="text-lg font-bold" style={{ ...mono, color: C.ambar }}>{fMXN(pronostico)}</div>
+          <div className="text-xs" style={{ color: C.dim }}>Facturado: {fMXN(totFacturado)}</div>
+        </div>
+      </div>
+      <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+        <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Ranking de vendedores</div>
+        <div className="space-y-2">
+          {ranking.map((v, i) => (
+            <div key={v.nombre}>
+              <div className="flex justify-between text-sm mb-0.5">
+                <span style={{ color: C.tinta }} className="font-semibold truncate">{i + 1}. {v.nombre}</span>
+                <span style={{ ...mono, color: C.dim }}>{fMXN(v.activo + v.ganado)}</span>
+              </div>
+              <div className="h-3 rounded-full overflow-hidden flex" style={{ background: C.fondo }}>
+                <div className="h-full" style={{ width: `${(v.activo / maxVend) * 100}%`, background: C.azul }} />
+                <div className="h-full" style={{ width: `${(v.ganado / maxVend) * 100}%`, background: C.verde }} />
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: C.dim }}>Activo {fMXN(v.activo)} ({v.nActivas}) · Ganado {fMXN(v.ganado)} ({v.nGanadas})</div>
+            </div>
+          ))}
+          {ranking.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin oportunidades en el equipo todavía.</div> : null}
+        </div>
+      </div>
+      <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+        <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Embudo del equipo</div>
+        <div className="space-y-2">
+          {embudo.map((e) => (
+            <div key={e.id}>
+              <div className="flex justify-between text-xs mb-0.5"><span style={{ color: C.tinta }}>{e.label}</span><span style={{ ...mono, color: C.dim }}>{e.n} · {fMXN(e.monto)}</span></div>
+              <div className="h-3 rounded-full overflow-hidden" style={{ background: C.fondo }}><div className="h-full rounded-full" style={{ width: `${Math.max(4, (e.n / maxN) * 100)}%`, background: e.color }} /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="text-xs" style={{ color: C.dim }}>Vista de solo lectura de la cartera de todo el equipo (barras: azul = activo, verde = ganado). Cada vendedor edita la suya desde su sesión.</div>
+    </Marco>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -1773,6 +1860,8 @@ export default function App() {
   const [verIntro, setVerIntro] = useState(true);
   const [verCuenta, setVerCuenta] = useState(false);
   const [sesion, setSesion] = useState(null);
+  const [rol, setRol] = useState(null);
+  const [gerenteOpen, setGerenteOpen] = useState(false);
   const [sync, setSync] = useState("local");
   const dataRef = useRef(null);
   const sesionRef = useRef(null);
@@ -1796,6 +1885,10 @@ export default function App() {
 
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { sesionRef.current = sesion; }, [sesion]);
+  useEffect(() => {
+    if (sesion) miPerfil().then((p) => setRol((p && p.rol) || "vendedor")).catch(() => setRol("vendedor"));
+    else setRol(null);
+  }, [sesion]);
 
   const guardar = (next) => {
     const conTs = { ...next, __actualizado: new Date().toISOString() };
@@ -2361,6 +2454,11 @@ export default function App() {
             <button onClick={() => setAnalisisOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
               <BarChart3 size={16} /> Análisis y pronóstico
             </button>
+            {(rol === "gerente" || rol === "admin") && (
+              <button onClick={() => setGerenteOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
+                <Users size={16} /> Tablero de gerente
+              </button>
+            )}
             {(() => {
               const H = hoy();
               const d7 = new Date(); d7.setDate(d7.getDate() + 7);
@@ -2989,6 +3087,9 @@ export default function App() {
       )}
       {analisisOpen && (
         <AnalisisSheet pipeline={data.pipeline || []} onCerrar={() => setAnalisisOpen(false)} />
+      )}
+      {gerenteOpen && (
+        <TableroGerente onCerrar={() => setGerenteOpen(false)} />
       )}
     </div>
   );

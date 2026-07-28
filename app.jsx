@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
@@ -123,6 +123,7 @@ const ESTADOS_COTIZACION = [
   { id: "aceptada", label: "Aceptada", color: "#2F9467" },
   { id: "rechazada", label: "Rechazada", color: "#C94848" },
 ];
+const PROB_ETAPA = { visita: 0.10, cotizado: 0.30, porcerrar: 0.60, oc: 0.90, pedido: 0.95, facturado: 1, perdido: 0 };
 function totalesCot(cot) {
   const sub = (cot.partidas || []).reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
   const iva = cot.iva !== false ? sub * 0.16 : 0;
@@ -1266,6 +1267,83 @@ function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEl
   );
 }
 
+/* ── Análisis y pronóstico ────────────────────────────────────────── */
+function AnalisisSheet({ pipeline, onCerrar }) {
+  const activas = pipeline.filter((o) => !["facturado", "perdido"].includes(o.etapa));
+  const facturado = pipeline.filter((o) => o.etapa === "facturado");
+  const perdido = pipeline.filter((o) => o.etapa === "perdido");
+  const totActivo = activas.reduce((s, o) => s + (o.monto || 0), 0);
+  const totFacturado = facturado.reduce((s, o) => s + (o.monto || 0), 0);
+  const totPerdido = perdido.reduce((s, o) => s + (o.monto || 0), 0);
+  const pronostico = activas.reduce((s, o) => s + (o.monto || 0) * (PROB_ETAPA[o.etapa] || 0), 0);
+  const cerradas = facturado.length + perdido.length;
+  const winRate = cerradas ? Math.round((facturado.length / cerradas) * 100) : 0;
+  const embudo = ETAPAS.filter((e) => ["visita", "cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(e.id))
+    .map((e) => { const ops = pipeline.filter((o) => o.etapa === e.id); return { ...e, n: ops.length, monto: ops.reduce((s, o) => s + (o.monto || 0), 0) }; });
+  const maxN = Math.max(1, ...embudo.map((e) => e.n));
+  const Tarjeta = ({ label, valor, sub, color }) => (
+    <div className="rounded-xl border p-3 flex-1" style={{ borderColor: C.borde, background: "#fff" }}>
+      <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>{label}</div>
+      <div className="text-lg font-bold" style={{ ...mono, color: color || C.tinta }}>{valor}</div>
+      {sub ? <div className="text-xs" style={{ color: C.dim }}>{sub}</div> : null}
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><BarChart3 size={16} /> Análisis y pronóstico</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          <div className="flex gap-2">
+            <Tarjeta label="Pipeline activo" valor={fMXN(totActivo)} sub={`${activas.length} oportunidad${activas.length === 1 ? "" : "es"}`} color={C.azul} />
+            <Tarjeta label="Pronóstico ponderado" valor={fMXN(pronostico)} sub="por probabilidad" color={C.ambar} />
+          </div>
+          <div className="flex gap-2">
+            <Tarjeta label="Ganado (facturado)" valor={fMXN(totFacturado)} sub={`${facturado.length} cierre${facturado.length === 1 ? "" : "s"}`} color={C.verde} />
+            <Tarjeta label="Tasa de cierre" valor={winRate + "%"} sub={`${facturado.length} de ${cerradas || 0} cerradas`} color={winRate >= 50 ? C.verde : C.rojo} />
+          </div>
+          {/* Embudo */}
+          <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+            <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Embudo de conversión</div>
+            <div className="space-y-2">
+              {embudo.map((e) => (
+                <div key={e.id}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span style={{ color: C.tinta }}>{e.label}</span>
+                    <span style={{ ...mono, color: C.dim }}>{e.n} · {fMXN(e.monto)}</span>
+                  </div>
+                  <div className="h-3 rounded-full overflow-hidden" style={{ background: C.fondo }}>
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(4, (e.n / maxN) * 100)}%`, background: e.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Ganado / Perdido */}
+          <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+            <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Ganado vs Perdido</div>
+            <div className="flex gap-3 text-sm">
+              <div className="flex-1">
+                <div style={{ color: C.verde }} className="font-semibold">Ganado: {facturado.length}</div>
+                <div style={{ ...mono, color: C.dim }} className="text-xs">{fMXN(totFacturado)}</div>
+              </div>
+              <div className="flex-1">
+                <div style={{ color: C.rojo }} className="font-semibold">Perdido: {perdido.length}</div>
+                <div style={{ ...mono, color: C.dim }} className="text-xs">{fMXN(totPerdido)}</div>
+              </div>
+            </div>
+          </div>
+          <div className="text-xs" style={{ color: C.dim }}>
+            El pronóstico pondera cada oportunidad activa por su probabilidad de cierre según la etapa (visita 10%, cotizado 30%, por cerrar 60%, OC 90%, pedido 95%). Es lo que puedes esperar cerrar con la cartera actual.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -1657,6 +1735,7 @@ export default function App() {
   const [buscarCli, setBuscarCli] = useState("");
   const [cotEdit, setCotEdit] = useState(null);
   const [catOpen, setCatOpen] = useState(false);
+  const [analisisOpen, setAnalisisOpen] = useState(false);
   const [verCierre, setVerCierre] = useState(false);
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
@@ -2279,6 +2358,9 @@ export default function App() {
         {/* ════ PIPELINE ════ */}
         {tab === "pipeline" && (
           <div>
+            <button onClick={() => setAnalisisOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+              <BarChart3 size={16} /> Análisis y pronóstico
+            </button>
             {(() => {
               const H = hoy();
               const d7 = new Date(); d7.setDate(d7.getDate() + 7);
@@ -2904,6 +2986,9 @@ export default function App() {
       )}
       {catOpen && (
         <CatalogoSheet productos={data.productos || []} onGuardarProd={guardarProducto} onEliminarProd={delProducto} onCerrar={() => setCatOpen(false)} />
+      )}
+      {analisisOpen && (
+        <AnalisisSheet pipeline={data.pipeline || []} onCerrar={() => setAnalisisOpen(false)} />
       )}
     </div>
   );

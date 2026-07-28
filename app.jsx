@@ -2,12 +2,13 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3, FileUp, FileSpreadsheet
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos, miPerfil, cargarEquipo } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
+import { leerXLSX, mapearMonday } from "./importar.jsx";
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
@@ -798,7 +799,7 @@ function SeguimientoSheet({ opps, onCerrar }) {
   );
 }
 
-function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc, clientes }) {
+function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clientes }) {
   const nueva = !opp.id;
   const [d, setD] = useState({
     cliente: opp.cliente || "", clienteId: opp.clienteId || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
@@ -927,6 +928,11 @@ function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc, clientes }) {
           {!nueva && d.cliente.trim() ? (
             <button onClick={() => enviarTexto(mensajeEstatus((d.vendedor || "").trim(), [{ ...opp, ...d, monto: d.moneda === "USD" && d.monto ? Math.round(Number(d.monto) * (tc || 0)) : (d.monto === "" ? null : Number(d.monto)) }]))} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, color: "#2C5A8F", background: C.azulBg }}>
               <Send size={15} /> Pedir estatus al vendedor
+            </button>
+          ) : null}
+          {!nueva && onDuplicar ? (
+            <button onClick={onDuplicar} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.borde, color: C.tinta, background: C.panel }}>
+              <Copy size={15} /> Duplicar oportunidad
             </button>
           ) : null}
           <div className="flex gap-2 pt-1">
@@ -1431,6 +1437,96 @@ function TableroGerente({ onCerrar }) {
   );
 }
 
+/* ── Importar oportunidades desde Excel de Monday ─────────────────── */
+function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
+  const [res, setRes] = useState(null);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [excl, setExcl] = useState({});
+  const [nombre, setNombre] = useState("");
+  const [verDup, setVerDup] = useState(false);
+  const onArchivo = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    setNombre(f.name); setError(""); setRes(null); setCargando(true);
+    try {
+      const buf = await f.arrayBuffer();
+      const hojas = leerXLSX(buf);
+      const r = mapearMonday(hojas, pipeline, tc);
+      if (r.error) { setError(r.error); setCargando(false); return; }
+      setRes(r); setExcl({}); setCargando(false);
+    } catch (e) { setError("No pude leer el archivo. Asegúrate de que sea un .xlsx exportado de Monday."); setCargando(false); }
+  };
+  const sel = res ? res.nuevas.filter((_, i) => !excl[i]) : [];
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileUp size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Importar oportunidades</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="text-xs" style={{ color: C.dim }}>Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente.</div>
+          <label className="w-full rounded-xl border border-dashed px-3 py-5 flex flex-col items-center justify-center gap-2 text-sm font-semibold" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+            <FileSpreadsheet size={22} style={{ color: C.ambar }} />
+            {cargando ? "Leyendo…" : nombre ? "Elegir otro archivo" : "Elegir archivo .xlsx de Monday"}
+            <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onArchivo} className="hidden" />
+          </label>
+          {nombre && !error ? <div className="text-xs" style={{ ...mono, color: C.dim }}>{nombre}</div> : null}
+          {error ? <div className="rounded-lg border p-3 text-xs" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{error}</div> : null}
+          {res ? (<>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.ambar, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.ambar, letterSpacing: "0.06em" }}>Nuevas</div>
+                <div className="text-2xl font-semibold" style={mono}>{res.nuevas.length}</div>
+              </div>
+              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Ya existen</div>
+                <div className="text-2xl font-semibold" style={{ ...mono, color: C.dim }}>{res.duplicadas.length}</div>
+              </div>
+            </div>
+            {res.nuevas.length === 0 ? (
+              <Vacio>No hay oportunidades nuevas que importar; todas las del archivo ya están en tu pipeline.</Vacio>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Sec>Se importarán · {sel.length}</Sec>
+                  <button onClick={() => setExcl(Object.fromEntries(res.nuevas.map((_, i) => [i, sel.length > 0])))} className="text-xs font-semibold" style={{ color: C.azul }}>{sel.length > 0 ? "Quitar todas" : "Marcar todas"}</button>
+                </div>
+                <div className="space-y-1.5">
+                  {res.nuevas.map((o, i) => (
+                    <label key={i} className="flex items-start gap-2 rounded-lg border p-2 cursor-pointer" style={{ borderColor: C.borde, background: C.panel }}>
+                      <input type="checkbox" checked={!excl[i]} onChange={() => setExcl((x) => ({ ...x, [i]: !x[i] }))} className="mt-0.5" style={{ accentColor: C.ambar }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="text-sm font-semibold block truncate">{o.cliente}</span>
+                        {o.titulo ? <span className="text-xs block truncate" style={{ color: C.dim }}>{o.titulo}</span> : null}
+                        <span className="text-xs" style={{ ...mono, color: C.dim }}>{o.monto != null ? fMXN(o.monto) : "sin monto"}{o.moneda === "USD" && o.montoOrig ? ` · US$${o.montoOrig}` : ""}{o.vendedor ? ` · ${o.vendedor}` : ""}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {res.duplicadas.length > 0 ? (
+              <div>
+                <button onClick={() => setVerDup((v) => !v)} className="text-xs font-semibold flex items-center gap-1" style={{ color: C.dim }}>
+                  <ChevronDown size={13} style={{ transform: verDup ? "rotate(180deg)" : "none" }} /> {verDup ? "Ocultar" : "Ver"} las {res.duplicadas.length} que se omiten
+                </button>
+                {verDup ? <div className="mt-1 space-y-1">{res.duplicadas.map((o, i) => <div key={i} className="text-xs px-2 py-1 rounded" style={{ background: "#fff", color: C.dim, border: `1px solid ${C.borde}` }}>{o.cliente}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</div>)}</div> : null}
+              </div>
+            ) : null}
+            {res.nuevas.length > 0 ? (
+              <button onClick={() => onImportar(sel)} disabled={sel.length === 0} className="w-full py-3 rounded-xl font-semibold" style={{ background: sel.length ? C.ambar : C.borde, color: "#fff" }}>
+                Importar {sel.length} {sel.length === 1 ? "oportunidad" : "oportunidades"}
+              </button>
+            ) : null}
+          </>) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -1823,6 +1919,7 @@ export default function App() {
   const [cotEdit, setCotEdit] = useState(null);
   const [catOpen, setCatOpen] = useState(false);
   const [analisisOpen, setAnalisisOpen] = useState(false);
+  const [verImportar, setVerImportar] = useState(false);
   const [verCierre, setVerCierre] = useState(false);
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
@@ -2035,6 +2132,18 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
+  const importarOpps = (lista) => {
+    const t = new Date().toISOString();
+    const nuevas = lista.map((o) => ({ ...o, id: uid(), creada: t, actualizada: t }));
+    guardar({ ...data, pipeline: [...nuevas, ...data.pipeline] });
+    setVerImportar(false);
+  };
+  const duplicarOpp = (o) => {
+    const t = new Date().toISOString();
+    const copia = { ...o, id: uid(), titulo: [o.titulo, "(copia)"].filter(Boolean).join(" ").trim(), creada: t, actualizada: t };
+    guardar({ ...data, pipeline: [copia, ...data.pipeline] });
+    setOppEdit(copia);
+  };
   const guardarCliente = (c, cts, acts) => {
     const ts = new Date().toISOString();
     const id = c.id || uid();
@@ -2232,7 +2341,7 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: C.fondo, color: C.tinta }}>
+    <div className="min-h-screen lg:pl-56" style={{ background: C.fondo, color: C.tinta }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
         * { -webkit-tap-highlight-color: transparent; }
@@ -2243,9 +2352,34 @@ export default function App() {
         ::-webkit-scrollbar { height: 0; width: 6px }
       `}</style>
 
+      {/* ── Barra lateral (solo PC) ── */}
+      <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 z-40 px-3 py-4" style={{ background: C.bezel, borderRight: `1px solid ${C.bezel2}` }}>
+        <button onClick={() => setVerIntro(true)} className="flex items-center gap-2 px-2 mb-5">
+          <Zap size={20} style={{ color: C.ambar }} />
+          <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-xl font-bold uppercase">
+            <span style={{ color: "#fff" }}>Bri</span><span style={{ color: C.ambar }}>da</span>
+          </span>
+        </button>
+        <nav className="flex flex-col gap-1 flex-1">
+          {NAV.map((n) => {
+            const activo = tab === n.id;
+            return (
+              <button key={n.id} onClick={() => { setTab(n.id); setExpand(null); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: activo ? C.bezel2 : "transparent" }}>
+                <n.icon size={18} style={{ color: activo ? C.ambar : "#7C8DA0" }} />
+                <span style={{ ...dsp, letterSpacing: "0.06em", color: activo ? "#fff" : "#7C8DA0" }} className="text-sm font-semibold uppercase">{n.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <button onClick={() => setVerCuenta(true)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ color: "#7C8DA0" }}>
+          {sync === "local" || sync === "offline" ? <CloudOff size={18} style={{ color: SYNC_COL[sync] }} /> : <Cloud size={18} style={{ color: SYNC_COL[sync] }} />}
+          <span style={{ ...dsp }} className="text-sm font-semibold uppercase">Cuenta</span>
+        </button>
+      </aside>
+
       {/* ── Bisel superior: identidad + regleta de estado ── */}
       <header className="sticky top-0 z-40" style={{ background: C.bezel, borderBottom: `3px solid ${C.ambar}` }}>
-        <div className="max-w-xl mx-auto px-4 pt-3 pb-2.5">
+        <div className="max-w-xl lg:max-w-3xl mx-auto px-4 pt-3 pb-2.5">
           <div className="flex items-end justify-between">
             <button onClick={() => setVerIntro(true)} aria-label="Volver a la pantalla de inicio" className="flex items-center gap-2">
               <Zap size={18} style={{ color: C.ambar }} />
@@ -2278,7 +2412,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 pb-32 pt-3">
+      <main className="max-w-xl lg:max-w-3xl mx-auto px-4 pb-32 lg:pb-10 pt-3">
         {sinStorage && (
           <div className="rounded-xl border px-3 py-2 text-xs flex items-center gap-2 mb-2" style={{ borderColor: C.ambar, background: C.ambarBg, color: C.tinta }}>
             <AlertTriangle size={14} style={{ color: C.ambar }} /> Almacenamiento no disponible: los datos no se guardarán al salir.
@@ -2507,7 +2641,9 @@ export default function App() {
               <div className="text-xs mt-2" style={{ color: C.dim }}>En juego = visita, cotizado y por cerrar · Pedido = OC y pedido (ya ganado) · Facturado = cobrado. Las tarjetas se ordenan por etapa y, dentro de cada una, por monto (mayor primero).</div>
               {(() => {
                 const mesDe = (o) => ((o.etapa === "facturado" && o.fechaFactura) || (["pedido", "oc"].includes(o.etapa) && (o.fechaPedido || o.fechaOC)) || o.actualizada || o.creada || "").slice(0, 7);
-                const meses = Array.from(new Set(data.pipeline.map(mesDe).filter(Boolean))).sort().reverse();
+                const mesesSet = new Set();
+                data.pipeline.forEach((o) => { const m = mesDe(o); if (m) mesesSet.add(m); if (o.fechaCotizacion) mesesSet.add(o.fechaCotizacion.slice(0, 7)); });
+                const meses = Array.from(mesesSet).sort().reverse();
                 if (!meses.length) return null;
                 const sel = mesSel ? data.pipeline.filter((o) => mesDe(o) === mesSel) : [];
                 const sum = (arr) => arr.reduce((s, o) => s + (o.monto || 0), 0);
@@ -2520,16 +2656,20 @@ export default function App() {
                         {meses.map((m) => { const [a, mm] = m.split("-"); return <option key={m} value={m}>{MESES_L[+mm - 1]} {a}</option>; })}
                       </select>
                     </div>
-                    {mesSel ? (
-                      <div className="grid grid-cols-3 gap-2 mt-2 text-center">
-                        {[["Facturado", sum(sel.filter((o) => o.etapa === "facturado"))], ["Pedido", sum(sel.filter((o) => ["pedido", "oc"].includes(o.etapa)))], ["Movimientos", sel.length, true]].map(([lb, val, cnt]) => (
-                          <div key={lb} className="rounded-lg border p-2" style={{ borderColor: C.borde, background: "#fff" }}>
-                            <div className="text-xs" style={{ color: C.dim }}>{lb}</div>
-                            <div className="text-sm font-semibold" style={mono}>{cnt ? val : fMXN(val)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                    {mesSel ? (() => {
+                      const cotizadoMes = sum(data.pipeline.filter((o) => (o.fechaCotizacion || "").slice(0, 7) === mesSel));
+                      const nCot = data.pipeline.filter((o) => (o.fechaCotizacion || "").slice(0, 7) === mesSel).length;
+                      return (
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-center">
+                          {[["Cotizado", cotizadoMes, false, nCot], ["Pedido", sum(sel.filter((o) => ["pedido", "oc"].includes(o.etapa)))], ["Facturado", sum(sel.filter((o) => o.etapa === "facturado"))], ["Movimientos", sel.length, true]].map(([lb, val, cnt, extra]) => (
+                            <div key={lb} className="rounded-lg border p-2" style={{ borderColor: lb === "Cotizado" ? C.ambar : C.borde, background: "#fff" }}>
+                              <div className="text-xs" style={{ color: C.dim }}>{lb}{lb === "Cotizado" && extra ? ` · ${extra}` : ""}</div>
+                              <div className="text-sm font-semibold" style={mono}>{cnt ? val : fMXN(val)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })() : null}
                   </div>
                 );
               })()}
@@ -2560,6 +2700,9 @@ export default function App() {
             </button>
             <button onClick={() => setVerSeguimiento(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, background: C.azulBg, color: "#2C5A8F" }}>
               <Send size={15} /> Pedir estatus a vendedores
+            </button>
+            <button onClick={() => setVerImportar(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.borde, background: C.panel, color: C.tinta }}>
+              <FileUp size={15} /> Importar de Monday (Excel)
             </button>
 
             <div className="space-y-2 mt-2">
@@ -2939,7 +3082,7 @@ export default function App() {
       </main>
 
       {/* ── Bisel inferior: navegación ── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40" style={{ background: C.bezel, borderTop: `1px solid ${C.bezel2}` }}>
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden" style={{ background: C.bezel, borderTop: `1px solid ${C.bezel2}` }}>
         <div className="max-w-xl mx-auto flex">
           {NAV.map((n) => {
             const activo = tab === n.id;
@@ -3074,7 +3217,7 @@ export default function App() {
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
 
       {oppEdit !== null && (
-        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} />
+        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} />
       )}
       {cliEdit !== null && (
         <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
@@ -3091,6 +3234,7 @@ export default function App() {
       {gerenteOpen && (
         <TableroGerente onCerrar={() => setGerenteOpen(false)} />
       )}
+      {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
     </div>
   );
 }

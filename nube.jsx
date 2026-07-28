@@ -114,7 +114,7 @@ const OPP = traductor(
     comisionPct: "comision_pct", comisionPagada: "comision_pagada",
     numCotizacion: "num_cotizacion", ocCliente: "oc_cliente", numPedido: "num_pedido", numFactura: "num_factura",
     fechaCotizacion: "fecha_cotizacion", fechaOC: "fecha_oc", fechaPedido: "fecha_pedido", fechaFactura: "fecha_factura",
-    proximaAccion: "proxima_accion", fechaAccion: "fecha_accion", notas: "notas",
+    proximaAccion: "proxima_accion", fechaAccion: "fecha_accion", notas: "notas", mondayId: "monday_id",
   },
   ["monto", "montoOrig", "margen", "comisionPct",
    "fechaCotizacion", "fechaOC", "fechaPedido", "fechaFactura", "fechaAccion"]

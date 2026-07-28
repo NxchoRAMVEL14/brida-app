@@ -7,7 +7,7 @@ import {
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
-import { exportarXLSX } from "./xlsx.jsx";
+import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
@@ -1234,7 +1234,10 @@ function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEl
             <div className="flex justify-between text-base font-bold pt-1 border-t" style={{ borderColor: C.borde, color: C.tinta }}><span>Total</span><span style={mono}>{fMXN(total)}{cur}</span></div>
           </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas / condiciones (tiempo de entrega, vigencia…)" rows={2} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
-          <button onClick={() => pdfCotizacion({ ...cot, ...d, partidas: parts })} className="w-full py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><FileDown size={16} /> Descargar PDF</button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => pdfCotizacion({ ...cot, ...d, partidas: parts })} className="py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><FileDown size={16} /> PDF</button>
+            <button onClick={() => exportarCotizacionXLSX({ ...cot, ...d, partidas: parts }, numeroALetras(sub), `Cotizacion_${(d.folio || "brida").replace(/[^\w-]/g, "")}.xlsx`)} className="py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Download size={16} /> Excel</button>
+          </div>
           <div className="flex gap-2">
             <button onClick={() => d.cliente.trim() && onGuardar({ ...cot, ...d, partidas: parts })} className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>{nueva ? "Crear cotización" : "Guardar cambios"}</button>
             {!nueva && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}

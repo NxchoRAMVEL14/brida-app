@@ -422,6 +422,30 @@ const pedirAClaude = async (texto, clave) => {
   return JSON.parse(t.replace(/```json|```/g, "").trim());
 };
 
+const contextoCartera = (data) => {
+  const H = hoy();
+  const activas = (data.pipeline || []).filter((o) => !["facturado", "perdido"].includes(o.etapa));
+  const lineas = activas.slice(0, 45).map((o) => {
+    const et = (ETAPAS.find((e) => e.id === o.etapa) || {}).label || o.etapa;
+    return `- ${o.cliente || "s/cliente"}${o.titulo ? " / " + o.titulo : ""} | ${et} | ${o.monto ? fMXN(o.monto) : "s/monto"}${o.marca ? " | " + o.marca : ""}${o.proximaAccion ? " | próx: " + o.proximaAccion : ""}${o.fechaAccion ? " (" + o.fechaAccion + (o.fechaAccion < H ? " VENCIDA" : "") + ")" : ""}`;
+  }).join("\n");
+  const fact = (data.pipeline || []).filter((o) => o.etapa === "facturado");
+  const totAct = activas.reduce((s, o) => s + (o.monto || 0), 0);
+  const totFact = fact.reduce((s, o) => s + (o.monto || 0), 0);
+  return `Fecha de hoy: ${H}\nPipeline activo: ${fMXN(totAct)} en ${activas.length} oportunidades. Facturado histórico: ${fMXN(totFact)} en ${fact.length}.\n\nOportunidades activas:\n${lineas || "ninguna"}`;
+};
+const analizarIA = async (contexto, pregunta, clave) => {
+  const sistema = `Eres un asesor comercial experto para un ingeniero de ventas industriales en México (vende automatización y control: Schneider, Siemens, Eaton, Telemecanique). Analizas su cartera de ventas y das recomendaciones accionables, concretas y breves, en español, con viñetas cortas y priorizadas. Hoy es ${hoy()}. Enfócate en qué hacer HOY para avanzar oportunidades: prioriza por monto, etapa y acciones vencidas. No inventes datos que no estén en el contexto.`;
+  const rsp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": clave, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: sistema, messages: [{ role: "user", content: `Mi cartera:\n${contexto}\n\nPregunta: ${pregunta}` }] }),
+  });
+  const j = await rsp.json();
+  if (!rsp.ok) throw new Error((j.error && j.error.message) || "HTTP " + rsp.status);
+  return (j.content || []).map((b) => b.text || "").join("").trim();
+};
+
 /* ── Piezas de interfaz ───────────────────────────────────────────── */
 const Sec = ({ color, children, extra }) => (
   <div className="flex items-center justify-between mt-5 mb-2">
@@ -1527,6 +1551,64 @@ function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
   );
 }
 
+/* ── Asistente IA para la cartera (usa tu clave de Claude) ────────── */
+function AsistenteIASheet({ data, onCerrar }) {
+  const [clave, setClave] = useState(() => { try { return localStorage.getItem("brida-apikey") || ""; } catch { return ""; } });
+  const [pregunta, setPregunta] = useState("");
+  const [resp, setResp] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+  const guardarClave = (v) => { setClave(v); try { localStorage.setItem("brida-apikey", v); } catch (e) {} };
+  const preguntar = async (q) => {
+    const p = (q || pregunta).trim();
+    if (!p || !clave.trim() || cargando) return;
+    setCargando(true); setError(""); setResp(""); if (q) setPregunta(q);
+    try { setResp(await analizarIA(contextoCartera(data), p, clave.trim())); }
+    catch (e) { setError(String((e && e.message) || e)); }
+    setCargando(false);
+  };
+  const presets = [
+    "¿Qué oportunidades debo priorizar hoy y por qué?",
+    "¿Cuáles están estancadas o con acción vencida?",
+    "Dame un resumen ejecutivo de mi cartera.",
+    "Ideas concretas para cerrar las de mayor monto.",
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Zap size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Asistente</span> <span style={{ color: C.ambar }}>IA</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          {!clave.trim() ? (
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.ambar, background: C.ambarBg }}>
+              <div className="text-xs" style={{ color: C.tinta }}>Para usar el Asistente IA, pega tu clave de <b>console.anthropic.com</b>. Se guarda solo en este dispositivo y nunca viaja en los respaldos. El costo es de centavos por consulta (usa Claude Haiku).</div>
+              <input value={clave} onChange={(e) => guardarClave(e.target.value)} placeholder="sk-ant-..." className="w-full rounded-lg px-3 py-2 text-sm" style={{ ...inp, ...mono }} />
+            </div>
+          ) : null}
+          <div className="text-xs" style={{ color: C.dim }}>Analizo tu cartera activa (clientes, etapas, montos, acciones y vencimientos) y te doy recomendaciones. Elige una pregunta o escribe la tuya:</div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {presets.map((p) => (
+              <button key={p} onClick={() => preguntar(p)} disabled={!clave.trim() || cargando} className="text-left text-sm px-3 py-2 rounded-lg border" style={{ borderColor: C.borde, background: "#fff", color: clave.trim() ? C.tinta : C.dim }}>{p}</button>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <input value={pregunta} onChange={(e) => setPregunta(e.target.value)} onKeyDown={(e) => e.key === "Enter" && preguntar()} placeholder="Escribe tu pregunta…" className="flex-1 rounded-lg px-3 py-2 text-sm" style={inp} />
+            <button onClick={() => preguntar()} disabled={!pregunta.trim() || !clave.trim() || cargando} className="px-4 rounded-lg font-semibold text-sm" style={{ background: pregunta.trim() && clave.trim() ? C.ambar : C.borde, color: "#fff" }}>{cargando ? "…" : "Preguntar"}</button>
+          </div>
+          {cargando ? <div className="text-sm text-center py-4" style={{ color: C.dim }}>Analizando tu cartera…</div> : null}
+          {error ? <div className="rounded-lg border p-3 text-xs" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>Error: {error}. Revisa tu clave o tu conexión.</div> : null}
+          {resp ? (
+            <div className="rounded-xl border p-3 text-sm" style={{ borderColor: C.borde, background: "#fff", color: C.tinta, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{resp}</div>
+          ) : null}
+          <div className="text-xs" style={{ color: "#9AA7B4" }}>La IA orienta, pero la decisión es tuya. Revisa siempre sus sugerencias contra lo que sabes del cliente.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -1612,6 +1694,10 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v4.0 — Brida CRM: Clientes y contactos, oportunidades ligadas a cliente, bitácora de actividades y seguimiento, cotizaciones con catálogo y PDF/Excel en formato Elektron, análisis y pronóstico, tableros de gerente con roles, y diseño para computadora (barra lateral en pantalla grande).",
+    "v3.6 — Nuevo importador: sube el Excel exportado de Monday y crea las oportunidades automáticamente (cliente, título, monto en pesos o dólares, vendedor, cotización, OC, sucursal y notas). Detecta y omite las que ya tienes para no duplicarlas.",
+    "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario.",
+    "v3.4 — Al filtrar por mes en el pipeline ahora también ves lo Cotizado en ese mes (según la fecha de cotización) y cuántas cotizaciones fueron, junto a Pedido, Facturado y Movimientos.",
     "v3.3 — El Excel del pipeline incluye una columna Monto (USD) junto a la de pesos: muestra el importe original en dólares si así se capturó, o el equivalente al tipo de cambio actual.",
     "v3.2 — El Excel del pipeline se reordenó siguiendo el flujo de venta: Oportunidad, Etapa, Cliente, Cotización y su fecha, Monto, Margen, OC, Pedido, Factura y sus fechas, y al final utilidad/comisión y datos de contacto.",
     "v3.1 — Nuevo «Pedir estatus a vendedores» en el Pipeline: agrupa las oportunidades en curso por vendedor y genera un mensaje claro y numerado (con renglón Estatus) para enviar por WhatsApp o compartir. También disponible por oportunidad desde su ficha.",
@@ -1752,7 +1838,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.3</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -1920,6 +2006,7 @@ export default function App() {
   const [catOpen, setCatOpen] = useState(false);
   const [analisisOpen, setAnalisisOpen] = useState(false);
   const [verImportar, setVerImportar] = useState(false);
+  const [iaOpen, setIaOpen] = useState(false);
   const [verCierre, setVerCierre] = useState(false);
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
@@ -2588,6 +2675,9 @@ export default function App() {
             <button onClick={() => setAnalisisOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
               <BarChart3 size={16} /> Análisis y pronóstico
             </button>
+            <button onClick={() => setIaOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.ambar, color: "#fff" }}>
+              <Zap size={16} /> Asistente IA
+            </button>
             {(rol === "gerente" || rol === "admin") && (
               <button onClick={() => setGerenteOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
                 <Users size={16} /> Tablero de gerente
@@ -3235,6 +3325,7 @@ export default function App() {
         <TableroGerente onCerrar={() => setGerenteOpen(false)} />
       )}
       {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
+      {iaOpen && <AsistenteIASheet data={data} onCerrar={() => setIaOpen(false)} />}
     </div>
   );
 }

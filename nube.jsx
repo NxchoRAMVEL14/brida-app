@@ -163,7 +163,7 @@ const COTIZACION = traductor(
   { cliente: "cliente", clienteId: "cliente_id", oportunidadId: "oportunidad_id",
     representante: "representante", domicilio: "domicilio", cotizador: "cotizador",
     folio: "folio", fecha: "fecha", estado: "estado", moneda: "moneda",
-    iva: "iva", notas: "notas", partidas: "partidas" }
+    iva: "iva", notas: "notas", partidas: "partidas", margen: "margen" }
 );
 
 function visitaAFila(v) {
@@ -268,8 +268,10 @@ export async function subirNube(uid, estado) {
   const fallos = [];
   const up = async (tabla, filas) => {
     if (!filas.length) return;
-    const { error } = await sb.from(tabla).upsert(filas, { onConflict: "id" });
-    if (error) throw error;
+    for (let i = 0; i < filas.length; i += 500) {
+      const { error } = await sb.from(tabla).upsert(filas.slice(i, i + 500), { onConflict: "id" });
+      if (error) throw error;
+    }
   };
   const paso = async (nombre, fn) => {
     try { await fn(); }

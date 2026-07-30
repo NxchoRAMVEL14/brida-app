@@ -1352,21 +1352,32 @@ function CatalogoSheet({ productos, descuentos, onGuardarProd, onEliminarProd, o
 }
 
 /* ── Editor de Cotización (partidas + totales) ────────────────────── */
-function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEliminar, onCerrar }) {
+function CotizacionEditor({ cot, clientes, productos, descuentos, folioAuto, onGuardar, onEliminar, onCerrar }) {
   const nueva = !cot.id;
   const [d, setD] = useState({
     cliente: cot.cliente || "", clienteId: cot.clienteId || "",
     representante: cot.representante || "", domicilio: cot.domicilio || "", cotizador: cot.cotizador || "",
     folio: cot.folio || folioAuto || "", fecha: cot.fecha || hoy(),
     estado: cot.estado || "borrador", moneda: cot.moneda || "MXN",
-    iva: cot.iva !== false, notas: cot.notas || "",
+    iva: cot.iva !== false, notas: cot.notas || "", margen: cot.margen != null ? cot.margen : 15,
   });
   const [parts, setParts] = useState(() => (cot.partidas || []).map((p) => ({ ...p, id: p.id || uid() })));
   const [pickProd, setPickProd] = useState(false);
+  const [buscaProd, setBuscaProd] = useState("");
   const setP = (i, campos) => setParts(parts.map((p, j) => j === i ? { ...p, ...campos } : p));
   const delP = (i) => setParts(parts.filter((_, j) => j !== i));
+  const conMargen = (costo, margen) => Math.round(Number(costo) * (1 + (Number(margen) || 0) / 100) * 100) / 100;
+  const setMargen = (v) => {
+    setD({ ...d, margen: v });
+    setParts(parts.map((p) => (p.costo != null && p.costo !== "") ? { ...p, precio: conMargen(p.costo, v) } : p));
+  };
   const addLibre = () => setParts([...parts, { id: uid(), descripcion: "", cantidad: "1", precio: "", descuento: "" }]);
-  const addProd = (p) => { setParts([...parts, { id: uid(), descripcion: p.descripcion, codigo: p.codigo || "", cantidad: "1", precio: p.precio ?? "", descuento: "", datasheet: p.datasheet || "" }]); setPickProd(false); };
+  const addProd = (p) => {
+    const costo = costoNeto(p, descuentos);
+    const precio = costo != null ? conMargen(costo, d.margen) : (p.precio ?? "");
+    setParts([...parts, { id: uid(), descripcion: p.descripcion, codigo: p.codigo || "", cantidad: "1", costo: costo != null ? costo : "", precioLista: p.precioLista ?? "", codigoDescuento: p.codigoDescuento || "", precio, descuento: "", datasheet: p.datasheet || "" }]);
+    setPickProd(false); setBuscaProd("");
+  };
   const sub = parts.reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
   const iva = d.iva ? sub * 0.16 : 0;
   const total = sub + iva;
@@ -1407,6 +1418,14 @@ function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEl
                 <button onClick={addLibre} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Línea</button>
               </div>
             </div>
+            <div className="flex items-center gap-2 rounded-lg border px-2 py-1.5" style={{ borderColor: C.ambar, background: C.ambarBg }}>
+              <span className="text-xs font-semibold whitespace-nowrap" style={{ color: "#8A5A00" }}>Margen</span>
+              <input value={d.margen} onChange={(e) => setMargen(e.target.value)} inputMode="decimal" className="w-14 rounded-lg px-2 py-1 text-sm text-center font-semibold" style={{ ...inp, ...mono }} />
+              <span className="text-xs" style={{ color: C.dim }}>% markup</span>
+              <div className="ml-auto flex gap-1">
+                {[10, 15, 20, 25, 30].map((m) => <button key={m} onClick={() => setMargen(m)} className="text-[11px] px-1.5 py-0.5 rounded font-semibold" style={{ background: Number(d.margen) === m ? C.ambar : "#fff", color: Number(d.margen) === m ? "#fff" : C.dim, border: `1px solid ${C.borde}` }}>{m}</button>)}
+              </div>
+            </div>
             {parts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Agrega productos del catálogo o líneas libres.</div> : parts.map((p, i) => {
               const imp = (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100);
               return (
@@ -1425,6 +1444,7 @@ function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEl
                     <input value={p.tiempo || ""} onChange={(e) => setP(i, { tiempo: e.target.value })} placeholder="Tiempo estim. (26-34 días)" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
                     <input value={p.datasheet || ""} onChange={(e) => setP(i, { datasheet: e.target.value })} placeholder="Link datasheet (DS)" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
                   </div>
+                  {p.costo != null && p.costo !== "" ? <div className="text-[10px]" style={{ ...mono, color: "#1F7A55" }}>costo {fMXN(p.costo)}{p.precioLista ? " · lista " + fMXN(p.precioLista) : ""}{p.codigoDescuento ? " · " + p.codigoDescuento : ""} · +{d.margen || 0}%</div> : null}
                 </div>
               );
             })}
@@ -1459,12 +1479,27 @@ function CotizacionEditor({ cot, clientes, productos, folioAuto, onGuardar, onEl
               <button onClick={() => setPickProd(false)}><X size={20} style={{ color: C.dim }} /></button>
             </div>
             <div className="p-4 space-y-1.5 pb-8">
-              {(productos || []).length === 0 ? <div className="text-sm text-center py-4" style={{ color: C.dim }}>El catálogo está vacío. Llénalo desde el botón «Catálogo» en la pestaña Cotiza.</div> : (productos || []).map((p) => (
-                <button key={p.id} onClick={() => addProd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
-                  <div className="flex-1 min-w-0"><div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div><div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca].filter(Boolean).join(" · ")}</div></div>
-                  <span style={{ ...mono, color: C.tinta }} className="text-sm">{fMXN(p.precio || 0)}</span>
-                </button>
-              ))}
+              <div className="relative">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
+                <input value={buscaProd} onChange={(e) => setBuscaProd(e.target.value)} placeholder="Buscar código o descripción…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} autoFocus />
+              </div>
+              {(() => {
+                if ((productos || []).length === 0) return <div className="text-sm text-center py-4" style={{ color: C.dim }}>El catálogo está vacío. Llénalo desde el botón «Catálogo» en la pestaña Cotiza.</div>;
+                const q = buscaProd.trim().toLowerCase();
+                const filtrados = (productos || []).filter((p) => !q || `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase().includes(q));
+                if (filtrados.length === 0) return <div className="text-sm text-center py-4" style={{ color: C.dim }}>Sin resultados para «{buscaProd}».</div>;
+                return filtrados.slice(0, 200).map((p) => {
+                  const costo = costoNeto(p, descuentos);
+                  return (
+                    <button key={p.id} onClick={() => addProd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                      <div className="flex-1 min-w-0"><div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div><div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca, p.codigoDescuento && "dto " + p.codigoDescuento].filter(Boolean).join(" · ")}</div></div>
+                      <div className="text-right whitespace-nowrap">
+                        {costo != null ? <><div style={{ ...mono, color: "#1F7A55" }} className="text-sm font-semibold">{fMXN(costo)}</div><div style={{ ...mono, color: C.dim }} className="text-[10px]">costo</div></> : <span style={{ ...mono, color: C.tinta }} className="text-sm">{fMXN(p.precio || p.precioLista || 0)}</span>}
+                      </div>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -1951,6 +1986,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v4.7.0 — Margen en la cotización: al elegir del catálogo ahora ves el costo neto, agregas con buscador y juegas con el margen (markup) — el precio se recalcula solo. Importador de precios afinado al formato Schneider (Catálogo, Descripción, Precio de Lista, Código Descuento).",
     "v4.6.0 — Listas de precios con descuentos en el catálogo: importa tu carátula (código de descuento → factor) y tu lista de precios desde Excel. Cada producto guarda precio de lista y código de descuento, y el catálogo calcula solo el costo neto (precio de lista × factor).",
     "v4.5.0 — Reasignación de facturas (gerente/admin): lista tus facturadas, completas zona, # de cliente y monto sin IVA, y exportas el Excel en el formato de reasignación al departamento (cotización, pedido, factura, cotizador y vendedores se toman solos).",
     "v4.4.0 — Tablero de equipo compartido: vendedor, cotizador y gerente ven el mismo pipeline (un registro por trato, sin duplicar montos). Cada oportunidad guarda quién la trajo, quién la cotiza y su origen (sucursal / vendedor de campo / directo). Nuevo filtro «Todas / Las que traje / Las que cotizo» y rol de Cotizador. Lo personal (tareas, tiempo, metas) sigue siendo privado.",
@@ -2103,7 +2139,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.6.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.7.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -3632,7 +3668,7 @@ export default function App() {
         <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
       )}
       {cotEdit !== null && (
-        <CotizacionEditor cot={cotEdit} clientes={data.clientes || []} productos={data.productos || []} folioAuto={`COT-${String((data.cotizaciones || []).length + 1).padStart(4, "0")}`} onGuardar={guardarCotizacion} onEliminar={() => delCotizacion(cotEdit.id)} onCerrar={() => setCotEdit(null)} />
+        <CotizacionEditor cot={cotEdit} clientes={data.clientes || []} productos={data.productos || []} descuentos={data.descuentos || []} folioAuto={`COT-${String((data.cotizaciones || []).length + 1).padStart(4, "0")}`} onGuardar={guardarCotizacion} onEliminar={() => delCotizacion(cotEdit.id)} onCerrar={() => setCotEdit(null)} />
       )}
       {catOpen && (
         <CatalogoSheet productos={data.productos || []} descuentos={data.descuentos || []} onGuardarProd={guardarProducto} onEliminarProd={delProducto} onImportarProductos={importarProductos} onImportarDescuentos={importarDescuentos} onCerrar={() => setCatOpen(false)} />

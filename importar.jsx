@@ -109,7 +109,7 @@ export function mapearMonday(hojas, pipeline, tc) {
 }
 
 // ── Carátula de descuentos (CUI → Factor integrado) ─────────────────
-const normc = (s) => String(s || "").trim().toLowerCase();
+const normc = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 export function mapearCaratula(hojas) {
   let filas = null, hi = -1;
   for (const h of hojas) {

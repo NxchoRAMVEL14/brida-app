@@ -873,7 +873,7 @@ function SeguimientoSheet({ opps, onCerrar }) {
   );
 }
 
-function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clientes, pipeline }) {
+function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clientes, pipeline, equipo, miId }) {
   const nueva = !opp.id;
   const [d, setD] = useState({
     cliente: opp.cliente || "", clienteId: opp.clienteId || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
@@ -883,6 +883,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
     fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "",
   });
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
@@ -969,6 +970,26 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
             </div>
           </div>
           <input value={d.vendedor} onChange={(e) => setD({ ...d, vendedor: e.target.value })} placeholder="Vendedor (a quién enviar la oportunidad)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Equipo</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <div className="text-xs mb-1" style={{ color: C.dim }}>Traída por</div>
+                <select value={d.traidoPorId} onChange={(e) => setD({ ...d, traidoPorId: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm" style={inp}>
+                  <option value="">— Nadie del equipo —</option>
+                  {(equipo || []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="text-xs mb-1" style={{ color: C.dim }}>Cotizador</div>
+                <select value={d.cotizadorId} onChange={(e) => setD({ ...d, cotizadorId: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm" style={inp}>
+                  <option value="">— Sin asignar —</option>
+                  {(equipo || []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+              </div>
+            </div>
+            <input value={d.origen} onChange={(e) => setD({ ...d, origen: e.target.value })} placeholder="Origen: sucursal / vendedor de campo, o «Directo»" className="w-full rounded-lg px-3 py-2 text-sm" style={inp} />
+          </div>
           <div>
             <div className="text-xs mb-1" style={{ color: C.dim }}>Fecha de oportunidad entrante</div>
             <input type="date" value={d.fechaVisita} onChange={(e) => setD({ ...d, fechaVisita: e.target.value })} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
@@ -1805,6 +1826,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v4.4.0 — Tablero de equipo compartido: vendedor, cotizador y gerente ven el mismo pipeline (un registro por trato, sin duplicar montos). Cada oportunidad guarda quién la trajo, quién la cotiza y su origen (sucursal / vendedor de campo / directo). Nuevo filtro «Todas / Las que traje / Las que cotizo» y rol de Cotizador. Lo personal (tareas, tiempo, metas) sigue siendo privado.",
     "v4.3.2 — Se agregó el sector OEM (Fabricante de Equipo Original) a los tipos de cliente.",
     "v4.3.1 — Sectores de cliente de Elektron (comerciante, contratista eléctrico, industria, integradores, gobierno, etc.) para clasificar mejor a cada cuenta.",
     "v4.3.0 — Cuentas clave y clasificación de clientes: marca manual de cuenta clave e Integrador Alliance, detección automática por historial (3+ ganadas), aviso de prioridad al abrir una oportunidad, y colores en el pipeline (dorado clave, verde recurrente, negro «pide y no cierra»).",
@@ -1954,7 +1976,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.3.2 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.4.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2127,6 +2149,7 @@ export default function App() {
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
   const [filtroE, setFiltroE] = useState("todas");
+  const [vista, setVista] = useState("todas");
   const [busca, setBusca] = useState("");
   const [copiado, setCopiado] = useState(false);
   const [textoManual, setTextoManual] = useState(null);
@@ -2161,6 +2184,8 @@ export default function App() {
   const [verCuenta, setVerCuenta] = useState(false);
   const [sesion, setSesion] = useState(null);
   const [rol, setRol] = useState(null);
+  const [miId, setMiId] = useState(null);
+  const [equipo, setEquipo] = useState([]);
   const [gerenteOpen, setGerenteOpen] = useState(false);
   const [sync, setSync] = useState("local");
   const dataRef = useRef(null);
@@ -2186,8 +2211,10 @@ export default function App() {
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { sesionRef.current = sesion; }, [sesion]);
   useEffect(() => {
-    if (sesion) miPerfil().then((p) => setRol((p && p.rol) || "vendedor")).catch(() => setRol("vendedor"));
-    else setRol(null);
+    if (sesion) {
+      miPerfil().then((p) => { setRol((p && p.rol) || "vendedor"); setMiId((p && p.id) || null); }).catch(() => setRol("vendedor"));
+      cargarEquipo().then((e) => setEquipo((e && e.perfiles) || [])).catch(() => setEquipo([]));
+    } else { setRol(null); setMiId(null); setEquipo([]); }
   }, [sesion]);
 
   const guardar = (next) => {
@@ -2331,6 +2358,7 @@ export default function App() {
     const ts = new Date().toISOString();
     const o2 = { ...o };
     if (!o2.fechaVisita) o2.fechaVisita = o.id ? (data.pipeline.find((x) => x.id === o.id) || {}).fechaVisita || ts.slice(0, 10) : ts.slice(0, 10);
+    if (!o.id && !o2.traidoPorId && miId) o2.traidoPorId = miId;
     const pipeline = o2.id
       ? data.pipeline.map((x) => x.id === o2.id ? { ...x, ...o2, actualizada: ts } : x)
       : [{ ...o2, id: uid(), creada: ts, actualizada: ts }, ...data.pipeline];
@@ -2522,6 +2550,7 @@ export default function App() {
   };
 
   const oppsFiltradas = data.pipeline
+    .filter((o) => vista === "todas" ? true : vista === "mias" ? ((o.traidoPorId || o.vendedorId) === miId) : (o.cotizadorId === miId))
     .filter((o) => filtroE === "todas" ? true : o.etapa === filtroE)
     .filter((o) => { const q = busca.trim().toLowerCase(); return !q || [o.cliente, o.titulo, o.marca, o.plaza, o.vendedor, o.numCotizacion, o.ocCliente, o.numPedido, o.numFactura].some((v) => (v || "").toLowerCase().includes(q)); })
     .sort((a, b) => {
@@ -2898,6 +2927,12 @@ export default function App() {
               ) : null;
             })()}
 
+            <div className="flex gap-1 mt-3 p-1 rounded-lg" style={{ background: C.bezel2 }}>
+              {[["todas", "Todas"], ["mias", "Las que traje"], ["cotizo", "Las que cotizo"]].map(([v, lbl]) => (
+                <button key={v} onClick={() => setVista(v)} className="flex-1 py-1.5 rounded-md text-xs font-semibold" style={{ background: vista === v ? "#fff" : "transparent", color: vista === v ? C.tinta : C.dim }}>{lbl}</button>
+              ))}
+            </div>
+
             <div className="flex items-center gap-2 mt-3 rounded-lg border px-3 py-2" style={{ borderColor: C.borde, background: "#fff" }}>
               <Search size={15} style={{ color: C.dim }} />
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, vendedor, cotización, pedido, factura…" className="flex-1 text-sm min-w-0" style={{ background: "transparent", color: C.tinta }} />
@@ -2934,6 +2969,14 @@ export default function App() {
                         <div className="min-w-0">
                           <div className="text-sm font-semibold truncate">{o.cliente}</div>
                           {o.titulo && <div className="text-xs truncate" style={{ color: C.dim }}>{o.titulo}</div>}
+                          {(() => {
+                            const tra = (equipo.find((m) => m.id === (o.traidoPorId || o.vendedorId)) || {}).nombre;
+                            const cot = (equipo.find((m) => m.id === o.cotizadorId) || {}).nombre;
+                            const partes = [];
+                            if (tra) partes.push("Trajo: " + tra);
+                            if (cot) partes.push("Cotiza: " + cot);
+                            return partes.length ? <div className="text-[11px] truncate mt-0.5" style={{ color: C.azul }}>{partes.join(" · ")}</div> : null;
+                          })()}
                         </div>
                         <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(o.monto)}</div>
                       </div>
@@ -3438,7 +3481,7 @@ export default function App() {
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
 
       {oppEdit !== null && (
-        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} pipeline={data.pipeline || []} />
+        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} pipeline={data.pipeline || []} equipo={equipo} miId={miId} />
       )}
       {cliEdit !== null && (
         <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />

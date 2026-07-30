@@ -20,6 +20,11 @@ export const sb = createClient(SB_URL, SB_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: "brida-auth" },
 });
 
+// Snapshot de lo que se cargó de las tablas COMPARTIDAS. Al guardar solo se
+// archiva/borra lo que estaba en este snapshot y el usuario quitó — así nunca
+// se borra lo que otro compañero agregó después de que cargamos.
+let SNAP = {};
+
 // ¿El estado tiene información real capturada? (igual que en tu v2.9)
 export function tieneDatos(d) {
   if (!d) return false;
@@ -115,6 +120,7 @@ const OPP = traductor(
     numCotizacion: "num_cotizacion", ocCliente: "oc_cliente", numPedido: "num_pedido", numFactura: "num_factura",
     fechaCotizacion: "fecha_cotizacion", fechaOC: "fecha_oc", fechaPedido: "fecha_pedido", fechaFactura: "fecha_factura",
     proximaAccion: "proxima_accion", fechaAccion: "fecha_accion", notas: "notas", mondayId: "monday_id", fechaVisita: "fecha_visita",
+    traidoPorId: "traido_por_id", cotizadorId: "cotizador_id", origen: "origen",
   },
   ["monto", "montoOrig", "margen", "comisionPct",
    "fechaCotizacion", "fechaOC", "fechaPedido", "fechaFactura", "fechaAccion"]
@@ -193,16 +199,16 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 export async function leerNube(uid) {
   const q = (b) => b.then((r) => r).catch((e) => ({ error: { message: String((e && e.message) || e) } }));
   const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot, raju] = await Promise.all([
-    q(sb.from("oportunidades").select("*").eq("vendedor_id", uid).eq("archivada", false).order("actualizada", { ascending: false })),
+    q(sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false })),
     q(sb.from("visitas").select("*").eq("vendedor_id", uid).order("fecha", { ascending: false })),
     q(sb.from("tareas").select("*").eq("user_id", uid).order("fecha", { ascending: true })),
     q(sb.from("tiempo").select("*").eq("user_id", uid).order("fecha", { ascending: false })),
     q(sb.from("metas").select("*").eq("user_id", uid).order("creada", { ascending: true })),
-    q(sb.from("clientes").select("*").eq("vendedor_id", uid).order("actualizada", { ascending: false })),
-    q(sb.from("contactos").select("*").eq("vendedor_id", uid).order("creada", { ascending: true })),
-    q(sb.from("actividades").select("*").eq("vendedor_id", uid).order("fecha", { ascending: false })),
-    q(sb.from("productos").select("*").eq("vendedor_id", uid).order("descripcion", { ascending: true })),
-    q(sb.from("cotizaciones").select("*").eq("vendedor_id", uid).order("actualizada", { ascending: false })),
+    q(sb.from("clientes").select("*").order("actualizada", { ascending: false })),
+    q(sb.from("contactos").select("*").order("creada", { ascending: true })),
+    q(sb.from("actividades").select("*").order("fecha", { ascending: false })),
+    q(sb.from("productos").select("*").order("descripcion", { ascending: true })),
+    q(sb.from("cotizaciones").select("*").order("actualizada", { ascending: false })),
     q(sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle()),
   ]);
   [["oportunidades", ropp], ["visitas", rvis], ["tareas", rtar], ["tiempo", rtie], ["metas", rmet], ["clientes", rcli], ["contactos", rcon], ["actividades", ract], ["productos", rprod], ["cotizaciones", rcot], ["ajustes", raju]]
@@ -218,7 +224,7 @@ export async function leerNube(uid) {
   const actualizado = aj.actualizado || "";
 
   const data = {
-    pipeline: D(ropp).map(OPP.aApp),
+    pipeline: D(ropp).map((r) => ({ ...OPP.aApp(r), vendedorId: r.vendedor_id })),
     visitas: D(rvis).map(visitaAApp),
     tareas: D(rtar).map(TAREA.aApp),
     tiempo: D(rtie).map(TIEMPO.aApp),
@@ -233,6 +239,14 @@ export async function leerNube(uid) {
     tipoCambio: aj.tipo_cambio ?? 17,
     tipoCambioFecha: aj.tipo_cambio_fecha || "",
     __actualizado: actualizado,
+  };
+  SNAP = {
+    oportunidades: new Set(D(ropp).map((r) => r.id)),
+    clientes: new Set(D(rcli).map((r) => r.id)),
+    contactos: new Set(D(rcon).map((r) => r.id)),
+    actividades: new Set(D(ract).map((r) => r.id)),
+    productos: new Set(D(rprod).map((r) => r.id)),
+    cotizaciones: new Set(D(rcot).map((r) => r.id)),
   };
   return { data, actualizado };
 }
@@ -252,13 +266,19 @@ export async function subirNube(uid, estado) {
     try { await fn(); }
     catch (e) { fallos.push(nombre); console.warn("Brida \u00b7 no se pudo guardar '" + nombre + "' (\u00bffalta correr su migraci\u00f3n SQL?):", (e && e.message) || e); }
   };
+  // Borrado seguro para tablas compartidas: solo borra lo que estaba en el
+  // snapshot de carga y el usuario quitó (nunca lo que otro agregó después).
+  const borrarSnap = async (tabla, snapSet, idsVivos) => {
+    const vivos = new Set(idsVivos);
+    const aBorrar = [...(snapSet || [])].filter((id) => !vivos.has(id));
+    if (aBorrar.length) { const { error } = await sb.from(tabla).delete().in("id", aBorrar); if (error) throw error; }
+  };
 
   await paso("oportunidades", async () => {
     const opps = estado.pipeline || [];
     await up("oportunidades", opps.map((o) => ({ ...OPP.aFila(o), id: o.id })));
     const vivos = new Set(opps.map((o) => o.id));
-    const existentes = await idsDe("oportunidades", "vendedor_id", uid, (q) => q.eq("archivada", false));
-    const aArchivar = existentes.filter((id) => !vivos.has(id));
+    const aArchivar = [...(SNAP.oportunidades || [])].filter((id) => !vivos.has(id));
     if (aArchivar.length) { const { error } = await sb.from("oportunidades").update({ archivada: true }).in("id", aArchivar); if (error) throw error; }
   });
   await paso("visitas", async () => {
@@ -286,27 +306,27 @@ export async function subirNube(uid, estado) {
   await paso("clientes", async () => {
     const clis = estado.clientes || [];
     await up("clientes", clis.map((c) => ({ ...CLIENTE.aFila(c), id: c.id })));
-    await borrarFaltantes("clientes", "vendedor_id", uid, clis.map((c) => c.id));
+    await borrarSnap("clientes", SNAP.clientes, clis.map((c) => c.id));
   });
   await paso("contactos", async () => {
     const cons = estado.contactos || [];
     await up("contactos", cons.map((c) => ({ ...CONTACTO.aFila(c), id: c.id })));
-    await borrarFaltantes("contactos", "vendedor_id", uid, cons.map((c) => c.id));
+    await borrarSnap("contactos", SNAP.contactos, cons.map((c) => c.id));
   });
   await paso("actividades", async () => {
     const acts = estado.actividades || [];
     await up("actividades", acts.map((a) => ({ ...ACTIVIDAD.aFila(a), id: a.id })));
-    await borrarFaltantes("actividades", "vendedor_id", uid, acts.map((a) => a.id));
+    await borrarSnap("actividades", SNAP.actividades, acts.map((a) => a.id));
   });
   await paso("productos", async () => {
     const prods = estado.productos || [];
     await up("productos", prods.map((p) => ({ ...PRODUCTO.aFila(p), id: p.id })));
-    await borrarFaltantes("productos", "vendedor_id", uid, prods.map((p) => p.id));
+    await borrarSnap("productos", SNAP.productos, prods.map((p) => p.id));
   });
   await paso("cotizaciones", async () => {
     const cots = estado.cotizaciones || [];
     await up("cotizaciones", cots.map((c) => ({ ...COTIZACION.aFila(c), id: c.id })));
-    await borrarFaltantes("cotizaciones", "vendedor_id", uid, cots.map((c) => c.id));
+    await borrarSnap("cotizaciones", SNAP.cotizaciones, cots.map((c) => c.id));
   });
   await paso("ajustes", async () => {
     const { error } = await sb.from("ajustes").upsert({

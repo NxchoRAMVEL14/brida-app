@@ -30,7 +30,7 @@ const mono = { fontFamily: "'IBM Plex Mono',ui-monospace,monospace" };
 const inp = { background: "#FFFFFF", border: `1px solid ${C.borde}`, color: C.tinta, colorScheme: "light" };
 
 const ETAPAS = [
-  { id: "visita", label: "Acuerdo de visita", color: C.morado },
+  { id: "visita", label: "Oportunidad entrante", color: C.morado },
   { id: "cotizado", label: "Cotizado", color: C.azul },
   { id: "porcerrar", label: "Por cerrar", color: C.ambar },
   { id: "oc", label: "OC recibida", color: C.verde },
@@ -125,6 +125,46 @@ const ESTADOS_COTIZACION = [
   { id: "rechazada", label: "Rechazada", color: "#C94848" },
 ];
 const PROB_ETAPA = { visita: 0.10, cotizado: 0.30, porcerrar: 0.60, oc: 0.90, pedido: 0.95, facturado: 1, perdido: 0 };
+const diasEntre = (a, b) => {
+  if (!a || !b) return null;
+  return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+};
+const tiemposOpp = (o) => {
+  const inicio = o.fechaVisita || (o.creada ? o.creada.slice(0, 10) : null);
+  const resp = (inicio && o.fechaCotizacion) ? diasEntre(inicio, o.fechaCotizacion) : null;
+  const cerrada = ["facturado", "perdido"].includes(o.etapa);
+  const fin = cerrada ? (o.fechaFactura || (o.actualizada ? o.actualizada.slice(0, 10) : hoy())) : hoy();
+  const total = inicio ? diasEntre(inicio, fin) : null;
+  return { resp, total, cerrada, inicio };
+};
+const horasSinCambio = (o) => {
+  const ts = o.actualizada || o.creada;
+  return ts ? (Date.now() - new Date(ts).getTime()) / 3600000 : 0;
+};
+const staleVisita = (o) => o.etapa === "visita" && horasSinCambio(o) >= 24;
+const fraseDias = (n) => n == null ? "—" : n === 0 ? "mismo día" : n === 1 ? "1 día" : `${n} días`;
+const CLASE_CLIENTE = {
+  clave: { label: "Cuenta clave", bg: "#FBF1D9", color: "#8A5A00", punto: "#C9A227" },
+  recurrente: { label: "Recurrente", bg: "#E4F3EC", color: "#2F7A55", punto: "#2F9467" },
+  riesgo: { label: "Pide y no cierra", bg: "#1A1A1A", color: "#F0F0F0", punto: "#1A1A1A" },
+};
+const clasificarCliente = (nombre, pipeline, clientes) => {
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const n = norm(nombre);
+  if (!n) return { tipo: "normal", ganadas: 0, perdidas: 0, activas: 0, total: 0, clave: false, alliance: false };
+  const cli = (clientes || []).find((c) => norm(c.nombre) === n);
+  const opps = (pipeline || []).filter((o) => norm(o.cliente) === n);
+  const ganadas = opps.filter((o) => o.etapa === "facturado").length;
+  const perdidas = opps.filter((o) => o.etapa === "perdido").length;
+  const activas = opps.filter((o) => !["facturado", "perdido"].includes(o.etapa)).length;
+  const total = opps.length;
+  const clave = !!(cli && cli.clave), alliance = !!(cli && cli.alliance);
+  let tipo = "normal";
+  if (clave || alliance || ganadas >= 3) tipo = "clave";
+  else if (total >= 4 && ganadas === 0 && perdidas >= 2) tipo = "riesgo";
+  else if (ganadas >= 1) tipo = "recurrente";
+  return { tipo, ganadas, perdidas, activas, total, clave, alliance };
+};
 function totalesCot(cot) {
   const sub = (cot.partidas || []).reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
   const iva = cot.iva !== false ? sub * 0.16 : 0;
@@ -823,7 +863,7 @@ function SeguimientoSheet({ opps, onCerrar }) {
   );
 }
 
-function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clientes }) {
+function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clientes, pipeline }) {
   const nueva = !opp.id;
   const [d, setD] = useState({
     cliente: opp.cliente || "", clienteId: opp.clienteId || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
@@ -832,7 +872,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     proximaAccion: opp.proximaAccion || "", fechaAccion: opp.fechaAccion || "", notas: opp.notas || "",
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
-    fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "",
+    fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
   });
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
@@ -864,6 +904,18 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
             ) : null}
           </div>
           <input value={d.titulo} onChange={(e) => setD({ ...d, titulo: e.target.value })} placeholder="Proyecto o descripción" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          {d.cliente.trim() ? (() => {
+            const cl = clasificarCliente(d.cliente, pipeline, clientes);
+            const cfg = CLASE_CLIENTE[cl.tipo];
+            if (!cfg && cl.total === 0) return null;
+            const negro = cfg && cfg.bg === "#1A1A1A";
+            return (
+              <div className="rounded-lg border p-2.5 flex items-center gap-2 flex-wrap" style={{ borderColor: cfg ? cfg.punto : C.borde, background: cfg ? cfg.bg : C.panel }}>
+                {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: negro ? "#000" : "#fff", color: cfg.color, border: `1px solid ${cfg.punto}` }}>{cfg.label}</span> : null}
+                <span className="text-xs" style={{ color: negro ? "#E8E8E8" : C.dim }}>{cl.ganadas} ganadas · {cl.perdidas} perdidas · {cl.activas} activas con este cliente</span>
+              </div>
+            );
+          })() : null}
           <div>
             <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Etapa</div>
             <div className="flex flex-wrap gap-1.5">
@@ -907,6 +959,26 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
             </div>
           </div>
           <input value={d.vendedor} onChange={(e) => setD({ ...d, vendedor: e.target.value })} placeholder="Vendedor (a quién enviar la oportunidad)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.dim }}>Fecha de oportunidad entrante</div>
+            <input type="date" value={d.fechaVisita} onChange={(e) => setD({ ...d, fechaVisita: e.target.value })} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          {(() => {
+            const oo = { ...opp, ...d };
+            const t = tiemposOpp(oo);
+            const stale = staleVisita(oo);
+            const hrs = Math.floor(horasSinCambio(oo));
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: stale ? C.ambar : C.borde, background: stale ? C.ambarBg : C.panel }}>
+                <div className="flex items-center gap-1.5 text-xs uppercase font-semibold mb-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Timer size={12} /> Tiempos</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div><div className="text-xs" style={{ color: C.dim }}>Respuesta (a cotizar)</div><div className="font-semibold" style={{ color: C.tinta }}>{t.resp != null ? fraseDias(t.resp) : (d.etapa === "visita" ? "sin cotizar aún" : "—")}</div></div>
+                  <div><div className="text-xs" style={{ color: C.dim }}>Ciclo total</div><div className="font-semibold" style={{ color: C.tinta }}>{t.total != null ? fraseDias(t.total) + (t.cerrada ? "" : " (en curso)") : "—"}</div></div>
+                </div>
+                {stale ? <div className="text-xs mt-2 font-semibold" style={{ color: "#9A6A00" }}>⏰ Lleva {hrs} h como oportunidad entrante sin cotizar. Prioriza cotizar a este cliente.</div> : null}
+              </div>
+            );
+          })()}
           {["cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(d.etapa) ? (
             <div className="grid grid-cols-2 gap-2">
               <div><div className="text-xs mb-1" style={{ color: C.dim }}>N° de cotización</div>
@@ -978,7 +1050,7 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
   const [d, setD] = useState({
     nombre: cliente.nombre || "", tipo: cliente.tipo || "", estado: cliente.estado || "prospecto",
     plaza: cliente.plaza || "", giro: cliente.giro || "", rfc: cliente.rfc || "",
-    direccion: cliente.direccion || "", notas: cliente.notas || "",
+    direccion: cliente.direccion || "", notas: cliente.notas || "", clave: !!cliente.clave, alliance: !!cliente.alliance,
   });
   const [cts, setCts] = useState(() => (contactos || []).filter((c) => c.clienteId === cliente.id).map((c) => ({ ...c })));
   const [acts, setActs] = useState(() => (actividades || []).filter((a) => a.clienteId === cliente.id).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((a) => ({ ...a })));
@@ -1014,6 +1086,24 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
               ))}
             </div>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {[["clave", "⭐ Cuenta clave"], ["alliance", "Integrador Alliance"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setD({ ...d, [k]: !d[k] })} className="text-xs px-3 py-2 rounded-lg border font-semibold flex items-center gap-1.5" style={{ borderColor: d[k] ? "#C9A227" : C.borde, color: d[k] ? "#8A5A00" : C.dim, background: d[k] ? "#FBF1D9" : "transparent" }}>
+                <span className="w-3.5 h-3.5 rounded border flex items-center justify-center" style={{ borderColor: d[k] ? "#C9A227" : C.borde, background: d[k] ? "#C9A227" : "#fff" }}>{d[k] ? <Check size={10} style={{ color: "#fff" }} /> : null}</span>
+                {lbl}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const cl = clasificarCliente(d.nombre, opps, [{ ...cliente, ...d }]);
+            const cfg = CLASE_CLIENTE[cl.tipo];
+            return (
+              <div className="rounded-lg border p-2.5 flex items-center gap-2 flex-wrap" style={{ borderColor: C.borde, background: C.panel }}>
+                <span className="text-xs" style={{ color: C.dim }}>Historial: <b style={{ color: C.verde }}>{cl.ganadas} ganadas</b> · {cl.perdidas} perdidas · {cl.activas} activas</span>
+                {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-auto" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}{cl.tipo === "clave" && !cl.clave && !cl.alliance ? " (por historial)" : ""}</span> : null}
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-2 gap-2">
             <input value={d.plaza} onChange={(e) => setD({ ...d, plaza: e.target.value })} placeholder="Plaza (León…)" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
             <input value={d.giro} onChange={(e) => setD({ ...d, giro: e.target.value })} placeholder="Giro (automotriz…)" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
@@ -1334,6 +1424,17 @@ function AnalisisSheet({ pipeline, onCerrar }) {
             <Tarjeta label="Ganado (facturado)" valor={fMXN(totFacturado)} sub={`${facturado.length} cierre${facturado.length === 1 ? "" : "s"}`} color={C.verde} />
             <Tarjeta label="Tasa de cierre" valor={winRate + "%"} sub={`${facturado.length} de ${cerradas || 0} cerradas`} color={winRate >= 50 ? C.verde : C.rojo} />
           </div>
+          {(() => {
+            const tR = pipeline.filter((o) => o.fechaCotizacion).map((o) => tiemposOpp(o).resp).filter((n) => n != null && n >= 0);
+            const prom = tR.length ? Math.round(tR.reduce((a, b) => a + b, 0) / tR.length) : null;
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Tiempo promedio a cotizar</div>
+                <div className="text-lg font-bold" style={{ ...mono, color: C.tinta }}>{prom != null ? fraseDias(prom) : "—"}</div>
+                <div className="text-xs" style={{ color: C.dim }}>{tR.length} cotización{tR.length === 1 ? "" : "es"} medida{tR.length === 1 ? "" : "s"}, desde que entró la oportunidad</div>
+              </div>
+            );
+          })()}
           {/* Embudo */}
           <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
             <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Embudo de conversión</div>
@@ -1639,9 +1740,9 @@ const MANUAL = [
     "Las barras muestran tu día por categoría y tu semana por día (la barra ámbar es hoy). En Registros recientes ves los últimos movimientos de cualquier día y puedes eliminar cualquiera con la X, incluidos los de días anteriores.",
   ]},
   { id: "pipeline", t: "Pipeline", c: [
-    "Flujo: Acuerdo de visita → Cotizado → Por cerrar → OC recibida → Pedido realizado → Facturado (o Perdido). Recibir la OC ya significa que la venta se ganó.",
+    "Flujo: Oportunidad entrante → Cotizado → Por cerrar → OC recibida → Pedido realizado → Facturado (o Perdido). Recibir la OC ya significa que la venta se ganó.",
     "Regla de oro: toda oportunidad activa debe tener próxima acción con fecha. La app te lo recuerda con la franja ámbar y en el cierre del día.",
-    "Activas son las que aún persigues: Acuerdo de visita, Cotizado y Por cerrar. Al recibir la OC dejan de ser activas porque ya se ganaron.",
+    "Activas son las que aún persigues: Oportunidad entrante, Cotizado y Por cerrar. Al recibir la OC dejan de ser activas porque ya se ganaron.",
     "Tarjeta: toca para editar (cliente, monto, margen, marca, plaza, vendedor y los números de referencia); Avanzar la pasa a la siguiente etapa; Agendar manda la próxima acción a Google Calendar.",
     "El resumen muestra tres cifras: En juego (visita, cotizado y por cerrar), Pedido (OC y pedido) y Facturado (cobrado). El Acumulado por mes agrupa usando las fechas de OC, pedido y factura.",
     "Desde Cotizado aparecen N° y fecha de cotización; desde OC recibida, la OC del cliente con su fecha; desde Pedido, N° y fecha de pedido y de factura. Todo se muestra como etiquetas y sale en el CSV de Monday.",
@@ -2213,9 +2314,11 @@ export default function App() {
 
   const guardarOpp = (o) => {
     const ts = new Date().toISOString();
-    const pipeline = o.id
-      ? data.pipeline.map((x) => x.id === o.id ? { ...x, ...o, actualizada: ts } : x)
-      : [{ ...o, id: uid(), creada: ts, actualizada: ts }, ...data.pipeline];
+    const o2 = { ...o };
+    if (!o2.fechaVisita) o2.fechaVisita = o.id ? (data.pipeline.find((x) => x.id === o.id) || {}).fechaVisita || ts.slice(0, 10) : ts.slice(0, 10);
+    const pipeline = o2.id
+      ? data.pipeline.map((x) => x.id === o2.id ? { ...x, ...o2, actualizada: ts } : x)
+      : [{ ...o2, id: uid(), creada: ts, actualizada: ts }, ...data.pipeline];
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
@@ -2770,6 +2873,15 @@ export default function App() {
                 <span><b>{der.sinAccion.length}</b> {der.sinAccion.length === 1 ? "oportunidad activa sin próxima acción" : "oportunidades activas sin próxima acción"}. Toda oportunidad viva necesita un siguiente paso con fecha.</span>
               </div>
             )}
+            {(() => {
+              const esperando = data.pipeline.filter(staleVisita);
+              return esperando.length ? (
+                <button onClick={() => setFiltroE("visita")} className="w-full rounded-xl border px-3 py-2 mt-2 text-xs flex items-center gap-2 text-left" style={{ borderColor: C.rojo, background: C.rojoBg }}>
+                  <Timer size={14} style={{ color: C.rojo }} className="shrink-0" />
+                  <span><b>{esperando.length}</b> {esperando.length === 1 ? "cliente lleva" : "clientes llevan"} +24 h como oportunidad entrante sin cotizar. Cotiza pronto para no enfriar la venta.</span>
+                </button>
+              ) : null;
+            })()}
 
             <div className="flex items-center gap-2 mt-3 rounded-lg border px-3 py-2" style={{ borderColor: C.borde, background: "#fff" }}>
               <Search size={15} style={{ color: C.dim }} />
@@ -2796,7 +2908,7 @@ export default function App() {
             </button>
 
             <div className="space-y-2 mt-2">
-              {oppsFiltradas.length === 0 && <Vacio>Sin oportunidades aquí. Cada acuerdo de visita o cotización enviada merece una tarjeta.</Vacio>}
+              {oppsFiltradas.length === 0 && <Vacio>Sin oportunidades aquí. Cada oportunidad entrante o cotización enviada merece una tarjeta.</Vacio>}
               {oppsFiltradas.map((o) => {
                 const e = etapa(o.etapa);
                 const venc = o.fechaAccion && o.fechaAccion < der.H && ACTIVAS.includes(o.etapa);
@@ -2811,6 +2923,10 @@ export default function App() {
                         <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(o.monto)}</div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {(() => {
+                          const cfg = CLASE_CLIENTE[clasificarCliente(o.cliente, data.pipeline, data.clientes).tipo];
+                          return cfg ? <span className="text-xs px-1.5 py-0.5 rounded font-semibold" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span> : null;
+                        })()}
                         <Etiqueta e={e} />
                         {o.marca && <span className="text-xs px-1.5 py-0.5 rounded border" style={{ borderColor: C.borde, color: C.dim }}>{o.marca}</span>}
                         {o.plaza && <span className="text-xs" style={{ color: C.dim }}>{o.plaza}</span>}
@@ -3307,7 +3423,7 @@ export default function App() {
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
 
       {oppEdit !== null && (
-        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} />
+        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} pipeline={data.pipeline || []} />
       )}
       {cliEdit !== null && (
         <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />

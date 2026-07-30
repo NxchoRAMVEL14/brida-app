@@ -114,7 +114,7 @@ const OPP = traductor(
     comisionPct: "comision_pct", comisionPagada: "comision_pagada",
     numCotizacion: "num_cotizacion", ocCliente: "oc_cliente", numPedido: "num_pedido", numFactura: "num_factura",
     fechaCotizacion: "fecha_cotizacion", fechaOC: "fecha_oc", fechaPedido: "fecha_pedido", fechaFactura: "fecha_factura",
-    proximaAccion: "proxima_accion", fechaAccion: "fecha_accion", notas: "notas", mondayId: "monday_id",
+    proximaAccion: "proxima_accion", fechaAccion: "fecha_accion", notas: "notas", mondayId: "monday_id", fechaVisita: "fecha_visita",
   },
   ["monto", "montoOrig", "margen", "comisionPct",
    "fechaCotizacion", "fechaOC", "fechaPedido", "fechaFactura", "fechaAccion"]
@@ -132,7 +132,7 @@ const TIEMPO = traductor(
 );
 const CLIENTE = traductor(
   { nombre: "nombre", tipo: "tipo", giro: "giro", plaza: "plaza", rfc: "rfc",
-    direccion: "direccion", estado: "estado", notas: "notas" }
+    direccion: "direccion", estado: "estado", notas: "notas", clave: "clave", alliance: "alliance" }
 );
 const CONTACTO = traductor(
   { clienteId: "cliente_id", nombre: "nombre", puesto: "puesto", telefono: "telefono",

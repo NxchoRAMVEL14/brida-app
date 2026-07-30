@@ -95,10 +95,20 @@ const RESULTADOS = [
 ];
 const resultadoDe = (id) => RESULTADOS.find((r) => r.id === id) || RESULTADOS[0];
 const TIPOS_CLIENTE = [
-  { id: "integrador", label: "Integrador" },
-  { id: "oem", label: "OEM" },
+  { id: "comerciante", label: "Comerciante / Reventa" },
+  { id: "contratista_electrico", label: "Contratista eléctrico" },
+  { id: "publico", label: "Público general" },
   { id: "industria", label: "Industria" },
-  { id: "publico", label: "Público" },
+  { id: "constructor", label: "Constructor civil" },
+  { id: "contratista_industrial", label: "Contratista industrial" },
+  { id: "servicios", label: "Empresa de servicios" },
+  { id: "electricista", label: "Electricista" },
+  { id: "integrador", label: "Integradores" },
+  { id: "oem", label: "OEM (Fabricante de Equipo Original)" },
+  { id: "arquitecto", label: "Arquitectos" },
+  { id: "ferretero", label: "Ferretero" },
+  { id: "redes", label: "Redes y comunicación" },
+  { id: "gobierno", label: "Gobierno" },
 ];
 const ESTADOS_CLIENTE = [
   { id: "prospecto", label: "Prospecto", color: "#3D74B8" },
@@ -1795,6 +1805,11 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v4.3.2 — Se agregó el sector OEM (Fabricante de Equipo Original) a los tipos de cliente.",
+    "v4.3.1 — Sectores de cliente de Elektron (comerciante, contratista eléctrico, industria, integradores, gobierno, etc.) para clasificar mejor a cada cuenta.",
+    "v4.3.0 — Cuentas clave y clasificación de clientes: marca manual de cuenta clave e Integrador Alliance, detección automática por historial (3+ ganadas), aviso de prioridad al abrir una oportunidad, y colores en el pipeline (dorado clave, verde recurrente, negro «pide y no cierra»).",
+    "v4.2.0 — Tiempos de cotización: fecha de oportunidad entrante y cálculo del tiempo de respuesta (entrante → cotización) y ciclo total, con foco en rojo para clientes con +24 h sin cotizar. Se renombró «acuerdo de visita» a «oportunidad entrante».",
+    "v4.1.0 — Recordatorios por correo: un aviso diario con lo vencido, por vencer (3 días), sin cotizar (+24 h) y el cierre de mes.",
     "v4.0 — Brida CRM: Clientes y contactos, oportunidades ligadas a cliente, bitácora de actividades y seguimiento, cotizaciones con catálogo y PDF/Excel en formato Elektron, análisis y pronóstico, tableros de gerente con roles, y diseño para computadora (barra lateral en pantalla grande).",
     "v3.6 — Nuevo importador: sube el Excel exportado de Monday y crea las oportunidades automáticamente (cliente, título, monto en pesos o dólares, vendedor, cotización, OC, sucursal y notas). Detecta y omite las que ya tienes para no duplicarlas.",
     "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario.",
@@ -1939,7 +1954,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.3.2 · Brida</div>
         </div>
       </div>
     </div>

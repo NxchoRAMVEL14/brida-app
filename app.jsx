@@ -1741,6 +1741,76 @@ function AsistenteIASheet({ data, onCerrar }) {
   );
 }
 
+/* ── Reasignación de facturas (gerente / admin) ───────────────────── */
+function ReasignacionSheet({ pipeline, equipo, onActualizar, onCerrar }) {
+  const facturadas = (pipeline || []).filter((o) => o.etapa === "facturado");
+  const [edits, setEdits] = useState(() => {
+    const m = {};
+    facturadas.forEach((o) => { m[o.id] = { zonaReasignar: o.zonaReasignar || "", numCliente: o.numCliente || "", montoSinIva: o.montoSinIva != null ? String(o.montoSinIva) : "" }; });
+    return m;
+  });
+  const nom = (id) => (equipo.find((m) => m.id === id) || {}).nombre || "";
+  const setCampo = (id, k, v) => setEdits((e) => ({ ...e, [id]: { ...e[id], [k]: v } }));
+  const guardar = () => {
+    const lista = facturadas.map((o) => { const e = edits[o.id] || {}; return { ...o, zonaReasignar: e.zonaReasignar || "", numCliente: e.numCliente || "", montoSinIva: e.montoSinIva === "" ? null : Number(e.montoSinIva) }; });
+    onActualizar(lista);
+  };
+  const exportar = () => {
+    const header = ["COTIZACIÓN", "PEDIDO", "FACTURA", "FECHA FACTURA", "CLIENTE", "# DE CLIENTE", "ZONA A REASIGNAR", "COTIZADOR A&C", "VENDEDOR DE CAMPO INVOLUCRADO", "VENDEDOR A&C INVOLUCRADO", "MONTO SIN IVA"];
+    const filas = [header, ...facturadas.map((o) => {
+      const e = edits[o.id] || {};
+      return [o.numCotizacion || "", o.numPedido || "", o.numFactura || "", o.fechaFactura || "", o.cliente || "",
+        e.numCliente || "", e.zonaReasignar || "", nom(o.cotizadorId), o.origen || o.vendedor || "", nom(o.traidoPorId || o.vendedorId),
+        e.montoSinIva !== "" && e.montoSinIva != null ? Number(e.montoSinIva) : (o.monto || "")];
+    })];
+    const tipos = ["text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "money"];
+    exportarXLSX(`Reasignacion_Facturas_${hoy()}.xlsx`, "REASIGNACIONES", filas, tipos);
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileSpreadsheet size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Reasignación de facturas</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="text-xs" style={{ color: C.dim }}>Aquí están tus facturadas. Completa zona, # de cliente y monto sin IVA; lo demás se toma solo. Luego exporta el Excel en el formato de reasignación.</div>
+          {facturadas.length === 0 ? <Vacio>Aún no hay oportunidades facturadas.</Vacio> : (
+            <div className="space-y-2">
+              {facturadas.map((o) => {
+                const e = edits[o.id] || {};
+                return (
+                  <div key={o.id} className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{o.cliente}</div>
+                        <div className="text-xs" style={{ ...mono, color: C.dim }}>{[o.numFactura && "F: " + o.numFactura, o.numCotizacion && "C: " + o.numCotizacion, o.fechaFactura].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(o.monto)}</div>
+                    </div>
+                    <div className="text-xs" style={{ color: C.azul }}>{[nom(o.traidoPorId || o.vendedorId) && "A&C: " + nom(o.traidoPorId || o.vendedorId), nom(o.cotizadorId) && "Cotizó: " + nom(o.cotizadorId), (o.origen || o.vendedor) && "Campo: " + (o.origen || o.vendedor)].filter(Boolean).join(" · ") || "—"}</div>
+                    <input value={e.zonaReasignar} onChange={(ev) => setCampo(o.id, "zonaReasignar", ev.target.value)} placeholder="Zona a reasignar (ej. AUTOMATIZACIÓN Y CONTROL LEÓN)" className="w-full rounded-lg px-3 py-2 text-sm" style={inp} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={e.numCliente} onChange={(ev) => setCampo(o.id, "numCliente", ev.target.value)} placeholder="# de cliente" className="rounded-lg px-3 py-2 text-sm" style={inp} />
+                      <input value={e.montoSinIva} onChange={(ev) => setCampo(o.id, "montoSinIva", ev.target.value)} inputMode="decimal" placeholder="Monto sin IVA" className="rounded-lg px-3 py-2 text-sm" style={{ ...inp, ...mono }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {facturadas.length > 0 ? (
+            <div className="flex gap-2 pt-1">
+              <button onClick={guardar} className="flex-1 py-2.5 rounded-xl border font-semibold text-sm" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>Guardar cambios</button>
+              <button onClick={exportar} className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileSpreadsheet size={15} /> Exportar Excel</button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -1826,6 +1896,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v4.5.0 — Reasignación de facturas (gerente/admin): lista tus facturadas, completas zona, # de cliente y monto sin IVA, y exportas el Excel en el formato de reasignación al departamento (cotización, pedido, factura, cotizador y vendedores se toman solos).",
     "v4.4.0 — Tablero de equipo compartido: vendedor, cotizador y gerente ven el mismo pipeline (un registro por trato, sin duplicar montos). Cada oportunidad guarda quién la trajo, quién la cotiza y su origen (sucursal / vendedor de campo / directo). Nuevo filtro «Todas / Las que traje / Las que cotizo» y rol de Cotizador. Lo personal (tareas, tiempo, metas) sigue siendo privado.",
     "v4.3.2 — Se agregó el sector OEM (Fabricante de Equipo Original) a los tipos de cliente.",
     "v4.3.1 — Sectores de cliente de Elektron (comerciante, contratista eléctrico, industria, integradores, gobierno, etc.) para clasificar mejor a cada cuenta.",
@@ -1976,7 +2047,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.4.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.5.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2187,6 +2258,7 @@ export default function App() {
   const [miId, setMiId] = useState(null);
   const [equipo, setEquipo] = useState([]);
   const [gerenteOpen, setGerenteOpen] = useState(false);
+  const [reasigOpen, setReasigOpen] = useState(false);
   const [sync, setSync] = useState("local");
   const dataRef = useRef(null);
   const sesionRef = useRef(null);
@@ -2828,6 +2900,11 @@ export default function App() {
             {(rol === "gerente" || rol === "admin") && (
               <button onClick={() => setGerenteOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
                 <Users size={16} /> Tablero de gerente
+              </button>
+            )}
+            {(rol === "gerente" || rol === "admin") && (
+              <button onClick={() => setReasigOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+                <FileSpreadsheet size={16} /> Reasignación de facturas
               </button>
             )}
             {(() => {
@@ -3498,6 +3575,7 @@ export default function App() {
       {gerenteOpen && (
         <TableroGerente onCerrar={() => setGerenteOpen(false)} />
       )}
+      {reasigOpen && <ReasignacionSheet pipeline={data.pipeline} equipo={equipo} onActualizar={(lista) => { const t = new Date().toISOString(); const byId = Object.fromEntries(lista.map((o) => [o.id, o])); guardar({ ...data, pipeline: data.pipeline.map((x) => byId[x.id] ? { ...x, ...byId[x.id], actualizada: t } : x) }); }} onCerrar={() => setReasigOpen(false)} />}
       {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
       {iaOpen && <AsistenteIASheet data={data} onCerrar={() => setIaOpen(false)} />}
     </div>

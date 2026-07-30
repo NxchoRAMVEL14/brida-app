@@ -8,7 +8,7 @@ import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subi
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
-import { leerXLSX, mapearMonday } from "./importar.jsx";
+import { leerXLSX, mapearMonday, mapearCaratula, mapearListaPrecios } from "./importar.jsx";
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
@@ -84,7 +84,7 @@ const descargar = (nombre, contenido, tipo = "text/csv;charset=utf-8;") => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], actividades: [], productos: [], cotizaciones: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
+const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], actividades: [], productos: [], cotizaciones: [], descuentos: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
 const RESULTADOS = [
   { id: "pendiente", label: "Pendiente", color: "#5E6E7E" },
   { id: "interes", label: "Interés", color: "#3D74B8" },
@@ -174,6 +174,18 @@ const clasificarCliente = (nombre, pipeline, clientes) => {
   else if (total >= 4 && ganadas === 0 && perdidas >= 2) tipo = "riesgo";
   else if (ganadas >= 1) tipo = "recurrente";
   return { tipo, ganadas, perdidas, activas, total, clave, alliance };
+};
+const factorDe = (codigo, descuentos) => {
+  const c = (codigo || "").trim().toLowerCase();
+  if (!c) return null;
+  const d = (descuentos || []).find((x) => (x.codigo || "").trim().toLowerCase() === c);
+  return d && d.factor != null && d.factor !== "" ? Number(d.factor) : null;
+};
+const costoNeto = (prod, descuentos) => {
+  const lista = Number(prod.precioLista);
+  const f = factorDe(prod.codigoDescuento, descuentos);
+  if (!isNaN(lista) && prod.precioLista !== "" && prod.precioLista != null && f != null) return Math.round(lista * f * 100) / 100;
+  return null;
 };
 function totalesCot(cot) {
   const sub = (cot.partidas || []).reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
@@ -1230,8 +1242,10 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
 }
 
 /* ── Catálogo de productos ────────────────────────────────────────── */
-function ProdForm({ prod, onGuardar, onCancelar, onEliminar }) {
-  const [d, setD] = useState({ codigo: prod.codigo || "", descripcion: prod.descripcion || "", marca: prod.marca || "", unidad: prod.unidad || "pza", precio: prod.precio ?? "", moneda: prod.moneda || "MXN", datasheet: prod.datasheet || "" });
+function ProdForm({ prod, onGuardar, onCancelar, onEliminar, descuentos }) {
+  const [d, setD] = useState({ codigo: prod.codigo || "", descripcion: prod.descripcion || "", marca: prod.marca || "", unidad: prod.unidad || "pza", precio: prod.precio ?? "", moneda: prod.moneda || "MXN", datasheet: prod.datasheet || "", precioLista: prod.precioLista ?? "", codigoDescuento: prod.codigoDescuento || "" });
+  const neto = costoNeto(d, descuentos);
+  const f = factorDe(d.codigoDescuento, descuentos);
   return (
     <div className="space-y-2">
       <div style={dsp} className="uppercase text-xs font-semibold" >{prod.id ? "Editar producto" : "Nuevo producto"}</div>
@@ -1241,51 +1255,92 @@ function ProdForm({ prod, onGuardar, onCancelar, onEliminar }) {
         <input value={d.marca} onChange={(e) => setD({ ...d, marca: e.target.value })} placeholder="Marca" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <input value={d.precio} onChange={(e) => setD({ ...d, precio: e.target.value })} placeholder="Precio" inputMode="decimal" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <input value={d.precioLista} onChange={(e) => setD({ ...d, precioLista: e.target.value })} placeholder="Precio lista" inputMode="decimal" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <input value={d.codigoDescuento} onChange={(e) => setD({ ...d, codigoDescuento: e.target.value })} placeholder="Cód. dto (003-APO)" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
         <select value={d.moneda} onChange={(e) => setD({ ...d, moneda: e.target.value })} className="rounded-lg px-2 py-2.5 text-sm" style={inp}><option>MXN</option><option>USD</option></select>
+      </div>
+      {(d.precioLista !== "" || d.codigoDescuento) ? (
+        <div className="rounded-lg border px-3 py-2 text-xs flex items-center justify-between" style={{ borderColor: neto != null ? C.verde : C.borde, background: neto != null ? C.verdeBg : C.panel }}>
+          <span style={{ color: C.dim }}>{f != null ? `Factor ${f} → costo neto` : (d.codigoDescuento ? "Código no está en la carátula" : "Falta código de descuento")}</span>
+          <span className="font-semibold" style={{ ...mono, color: neto != null ? "#1F7A55" : C.dim }}>{neto != null ? fMXN(neto) : "—"}</span>
+        </div>
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
+        <input value={d.precio} onChange={(e) => setD({ ...d, precio: e.target.value })} placeholder="Costo manual (opcional)" inputMode="decimal" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
         <input value={d.unidad} onChange={(e) => setD({ ...d, unidad: e.target.value })} placeholder="Unidad" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
       </div>
       <input value={d.datasheet} onChange={(e) => setD({ ...d, datasheet: e.target.value })} placeholder="Link de datasheet (URL de la hoja de datos)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
       <div className="flex gap-2">
-        <button onClick={() => d.descripcion.trim() && onGuardar({ ...prod, ...d, precio: d.precio === "" ? null : Number(d.precio) })} className="flex-1 py-2.5 rounded-xl font-semibold" style={{ background: d.descripcion.trim() ? C.tinta : C.borde, color: "#fff" }}>{prod.id ? "Guardar" : "Agregar"}</button>
+        <button onClick={() => d.descripcion.trim() && onGuardar({ ...prod, ...d, precio: d.precio === "" ? null : Number(d.precio), precioLista: d.precioLista === "" ? null : Number(d.precioLista) })} className="flex-1 py-2.5 rounded-xl font-semibold" style={{ background: d.descripcion.trim() ? C.tinta : C.borde, color: "#fff" }}>{prod.id ? "Guardar" : "Agregar"}</button>
         {onEliminar && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
         <button onClick={onCancelar} className="px-3 rounded-xl border text-sm" style={{ borderColor: C.borde, color: C.dim }}>Cancelar</button>
       </div>
     </div>
   );
 }
-function CatalogoSheet({ productos, onGuardarProd, onEliminarProd, onCerrar }) {
+function CatalogoSheet({ productos, descuentos, onGuardarProd, onEliminarProd, onImportarProductos, onImportarDescuentos, onCerrar }) {
   const [ed, setEd] = useState(null);
   const [q, setQ] = useState("");
+  const [msg, setMsg] = useState("");
   const lista = (productos || []).filter((p) => !q || `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase().includes(q.toLowerCase()));
+  const subirCaratula = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    setMsg("Leyendo carátula…");
+    try { const r = mapearCaratula(leerXLSX(await f.arrayBuffer())); if (r.error) { setMsg(r.error); return; } onImportarDescuentos(r.items); setMsg(`Carátula cargada: ${r.items.length} códigos de descuento.`); }
+    catch (e) { setMsg("No pude leer el archivo de la carátula."); }
+  };
+  const subirLista = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    setMsg("Leyendo lista de precios…");
+    try { const r = mapearListaPrecios(leerXLSX(await f.arrayBuffer()), productos); if (r.error) { setMsg(r.error); return; } onImportarProductos(r.nuevos); setMsg(`Lista cargada: ${r.nuevos.length} productos nuevos${r.repetidos.length ? `, ${r.repetidos.length} ya existían (omitidos)` : ""}.`); }
+    catch (e) { setMsg("No pude leer el archivo de la lista."); }
+  };
   return (
     <div className="fixed inset-0 z-[60] flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
-          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><Package size={16} /> Catálogo</div>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><Package size={16} /> Catálogo <span style={{ color: C.dim }} className="normal-case font-normal">· {(descuentos || []).length} dtos</span></div>
           <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
         </div>
         <div className="p-4 space-y-3 pb-8">
           {ed ? (
-            <ProdForm prod={ed} onGuardar={(p) => { onGuardarProd(p); setEd(null); }} onCancelar={() => setEd(null)} onEliminar={ed.id ? () => { onEliminarProd(ed.id); setEd(null); } : null} />
+            <ProdForm prod={ed} descuentos={descuentos} onGuardar={(p) => { onGuardarProd(p); setEd(null); }} onCancelar={() => setEd(null)} onEliminar={ed.id ? () => { onEliminarProd(ed.id); setEd(null); } : null} />
           ) : (
             <>
               <button onClick={() => setEd({})} className="w-full py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}><Plus size={16} /> Nuevo producto</button>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="py-2.5 rounded-xl border font-semibold text-sm flex items-center justify-center gap-1.5" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+                  <FileUp size={15} style={{ color: C.ambar }} /> Importar precios
+                  <input type="file" accept=".xlsx" onChange={subirLista} className="hidden" />
+                </label>
+                <label className="py-2.5 rounded-xl border font-semibold text-sm flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+                  <FileSpreadsheet size={15} /> Importar carátula
+                  <input type="file" accept=".xlsx" onChange={subirCaratula} className="hidden" />
+                </label>
+              </div>
+              {msg ? <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: C.borde, background: C.panel, color: C.tinta }}>{msg}</div> : null}
               <div className="relative">
                 <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código, descripción o marca…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
               </div>
-              {lista.length === 0 ? <div className="text-sm text-center py-6" style={{ color: C.dim }}>Catálogo vacío. Agrega tus productos y marcas.</div> : (
+              {lista.length === 0 ? <div className="text-sm text-center py-6" style={{ color: C.dim }}>Catálogo vacío. Agrega productos, o importa tu lista de precios y la carátula de descuentos.</div> : (
                 <div className="space-y-1.5">
-                  {lista.map((p) => (
-                    <button key={p.id} onClick={() => setEd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div>
-                        <div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca].filter(Boolean).join(" · ")}</div>
-                      </div>
-                      <span style={{ ...mono, color: C.tinta }} className="text-sm whitespace-nowrap">{fMXN(p.precio || 0)}{p.moneda === "USD" ? " USD" : ""}</span>
-                    </button>
-                  ))}
+                  {lista.slice(0, 300).map((p) => {
+                    const neto = costoNeto(p, descuentos);
+                    return (
+                      <button key={p.id} onClick={() => setEd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca, p.codigoDescuento && "dto " + p.codigoDescuento].filter(Boolean).join(" · ")}</div>
+                        </div>
+                        <div className="text-right whitespace-nowrap">
+                          {neto != null ? <div style={{ ...mono, color: "#1F7A55" }} className="text-sm font-semibold">{fMXN(neto)}</div> : <span style={{ ...mono, color: C.tinta }} className="text-sm">{fMXN(p.precio || 0)}</span>}
+                          {neto != null && p.precioLista ? <div style={{ ...mono, color: C.dim }} className="text-[10px]">lista {fMXN(p.precioLista)}</div> : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {lista.length > 300 ? <div className="text-xs text-center py-2" style={{ color: C.dim }}>Mostrando 300 de {lista.length}. Usa el buscador.</div> : null}
                 </div>
               )}
             </>
@@ -1896,6 +1951,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v4.6.0 — Listas de precios con descuentos en el catálogo: importa tu carátula (código de descuento → factor) y tu lista de precios desde Excel. Cada producto guarda precio de lista y código de descuento, y el catálogo calcula solo el costo neto (precio de lista × factor).",
     "v4.5.0 — Reasignación de facturas (gerente/admin): lista tus facturadas, completas zona, # de cliente y monto sin IVA, y exportas el Excel en el formato de reasignación al departamento (cotización, pedido, factura, cotizador y vendedores se toman solos).",
     "v4.4.0 — Tablero de equipo compartido: vendedor, cotizador y gerente ven el mismo pipeline (un registro por trato, sin duplicar montos). Cada oportunidad guarda quién la trajo, quién la cotiza y su origen (sucursal / vendedor de campo / directo). Nuevo filtro «Todas / Las que traje / Las que cotizo» y rol de Cotizador. Lo personal (tareas, tiempo, metas) sigue siendo privado.",
     "v4.3.2 — Se agregó el sector OEM (Fabricante de Equipo Original) a los tipos de cliente.",
@@ -2047,7 +2103,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.5.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.6.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2473,6 +2529,18 @@ export default function App() {
     guardar({ ...data, productos });
   };
   const delProducto = (id) => guardar({ ...data, productos: (data.productos || []).filter((p) => p.id !== id) });
+  const importarProductos = (nuevos) => {
+    const t = new Date().toISOString();
+    const items = nuevos.map((p) => ({ ...p, id: uid(), creada: t }));
+    guardar({ ...data, productos: [...items, ...(data.productos || [])] });
+  };
+  const importarDescuentos = (items) => {
+    const t = new Date().toISOString();
+    const prev = data.descuentos || [];
+    const porCodigo = {}; prev.forEach((d) => { porCodigo[(d.codigo || "").trim().toLowerCase()] = d; });
+    items.forEach((d) => { const k = (d.codigo || "").trim().toLowerCase(); porCodigo[k] = { ...(porCodigo[k] || {}), ...d, id: (porCodigo[k] && porCodigo[k].id) || uid(), creada: (porCodigo[k] && porCodigo[k].creada) || t }; });
+    guardar({ ...data, descuentos: Object.values(porCodigo) });
+  };
   const guardarCotizacion = (c) => {
     const ts = new Date().toISOString();
     const id = c.id || uid();
@@ -3567,7 +3635,7 @@ export default function App() {
         <CotizacionEditor cot={cotEdit} clientes={data.clientes || []} productos={data.productos || []} folioAuto={`COT-${String((data.cotizaciones || []).length + 1).padStart(4, "0")}`} onGuardar={guardarCotizacion} onEliminar={() => delCotizacion(cotEdit.id)} onCerrar={() => setCotEdit(null)} />
       )}
       {catOpen && (
-        <CatalogoSheet productos={data.productos || []} onGuardarProd={guardarProducto} onEliminarProd={delProducto} onCerrar={() => setCatOpen(false)} />
+        <CatalogoSheet productos={data.productos || []} descuentos={data.descuentos || []} onGuardarProd={guardarProducto} onEliminarProd={delProducto} onImportarProductos={importarProductos} onImportarDescuentos={importarDescuentos} onCerrar={() => setCatOpen(false)} />
       )}
       {analisisOpen && (
         <AnalisisSheet pipeline={data.pipeline || []} onCerrar={() => setAnalisisOpen(false)} />

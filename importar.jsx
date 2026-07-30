@@ -107,3 +107,60 @@ export function mapearMonday(hojas, pipeline, tc) {
   }
   return { nuevas, duplicadas };
 }
+
+// ── Carátula de descuentos (CUI → Factor integrado) ─────────────────
+const normc = (s) => String(s || "").trim().toLowerCase();
+export function mapearCaratula(hojas) {
+  let filas = null, hi = -1;
+  for (const h of hojas) {
+    const i = h.findIndex((r) => r && r.some((c) => normc(c) === "cui" || normc(c).includes("cui")) && r.some((c) => normc(c).includes("factor")));
+    if (i >= 0) { filas = h; hi = i; break; }
+  }
+  if (!filas) return { error: "No encontré los encabezados de la carátula (CUI y Factor integrado). Revisa el archivo." };
+  const enc = filas[hi].map(normc);
+  const col = (nombres) => enc.findIndex((c) => nombres.some((n) => c.includes(n)));
+  const iCui = col(["cui", "código", "codigo", "clave"]);
+  const iFactor = enc.findIndex((c) => c.includes("factor"));
+  const iBase = enc.findIndex((c) => c === "base" || (c.includes("base") && !c.includes("data")));
+  const iMod = col(["módulo", "modulo"]);
+  const iGrupo = col(["nombre del grupo", "grupo", "descrip"]);
+  const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace("%", "").replace(",", ".").trim()); return isNaN(n) ? null : n; };
+  const items = [];
+  for (let r = hi + 1; r < filas.length; r++) {
+    const row = filas[r]; if (!row) continue;
+    const codigo = String(row[iCui] || "").trim();
+    if (!codigo) continue;
+    items.push({ codigo, factor: num(row[iFactor]), base: iBase >= 0 ? num(row[iBase]) : null, modulo: iMod >= 0 ? String(row[iMod] || "").trim() : "", descripcion: iGrupo >= 0 ? String(row[iGrupo] || "").trim() : "" });
+  }
+  return items.length ? { items } : { error: "No encontré filas con código en la carátula." };
+}
+
+// ── Lista de precios → productos (detección flexible de columnas) ────
+export function mapearListaPrecios(hojas, existentes) {
+  let filas = null, hi = -1;
+  for (const h of hojas) {
+    const i = h.findIndex((r) => r && r.some((c) => /precio|lista|price/.test(normc(c))) && r.some((c) => /c[oó]digo|catalog|referencia|clave|art[ií]culo|sku/.test(normc(c))));
+    if (i >= 0) { filas = h; hi = i; break; }
+  }
+  if (!filas) return { error: "No encontré los encabezados de la lista (una columna de código y una de precio). Dime cómo se llaman tus columnas y lo ajusto." };
+  const enc = filas[hi].map(normc);
+  const col = (nombres) => enc.findIndex((c) => nombres.some((n) => c.includes(n)));
+  const iCod = col(["código de producto", "codigo de producto", "catalog", "referencia", "número de", "numero de", "código", "codigo", "clave", "artículo", "articulo", "sku"]);
+  const iDesc = col(["descrip", "producto", "nombre"]);
+  const iMarca = col(["marca", "brand", "fabricante"]);
+  const iListaHdr = enc.findIndex((c) => c.includes("lista"));
+  const iLista = iListaHdr >= 0 ? iListaHdr : col(["precio", "price"]);
+  const iDto = col(["código de descuento", "codigo de descuento", "descuento", "cui", "grupo", "dto"]);
+  const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(/[$,\s]/g, "")); return isNaN(n) ? null : n; };
+  const existe = new Set((existentes || []).map((p) => normc(p.codigo)).filter(Boolean));
+  const nuevos = [], repetidos = [];
+  for (let r = hi + 1; r < filas.length; r++) {
+    const row = filas[r]; if (!row) continue;
+    const codigo = String(row[iCod] || "").trim();
+    const descripcion = iDesc >= 0 ? String(row[iDesc] || "").trim() : "";
+    if (!codigo && !descripcion) continue;
+    const prod = { codigo, descripcion: descripcion || codigo, marca: iMarca >= 0 ? String(row[iMarca] || "").trim() : "", precioLista: num(row[iLista]), codigoDescuento: iDto >= 0 ? String(row[iDto] || "").trim() : "", moneda: "MXN", unidad: "pza" };
+    (codigo && existe.has(normc(codigo)) ? repetidos : nuevos).push(prod);
+  }
+  return (nuevos.length || repetidos.length) ? { nuevos, repetidos } : { error: "No encontré productos con datos en el archivo." };
+}

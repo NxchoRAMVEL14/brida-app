@@ -152,7 +152,7 @@ const ACTIVIDAD = traductor(
 const PRODUCTO = traductor(
   { codigo: "codigo", descripcion: "descripcion", marca: "marca", unidad: "unidad",
     precio: "precio", moneda: "moneda", margen: "margen", datasheet: "datasheet",
-    precioLista: "precio_lista", codigoDescuento: "codigo_descuento" },
+    precioLista: "precio_lista", codigoDescuento: "codigo_descuento", listaVersion: "lista_version" },
   ["precio", "margen", "precioLista"]
 );
 const DESCUENTO = traductor(

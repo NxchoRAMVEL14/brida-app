@@ -895,8 +895,17 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
     fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
-    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "",
   });
+  const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
+  const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false }]);
+  const setF = (i, campos) => setFacturas(facturas.map((f, j) => j === i ? { ...f, ...campos } : f));
+  const delF = (i) => setFacturas(facturas.filter((_, j) => j !== i));
+  const totalFacturado = facturas.reduce((s, f) => s + (Number(f.monto) || 0), 0);
+  const [compras, setCompras] = useState(() => (opp.compras || []).map((c) => ({ ...c, id: c.id || uid() })));
+  const addCompra = () => setCompras([...compras, { id: uid(), proveedor: "", numOC: "", fechaOC: hoy(), fechaEntrega: "", estado: "pendiente", monto: "", notas: "" }]);
+  const setC = (i, campos) => setCompras(compras.map((c, j) => j === i ? { ...c, ...campos } : c));
+  const delC = (i) => setCompras(compras.filter((_, j) => j !== i));
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
@@ -1063,6 +1072,77 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
               </button>
             ) : null}
           </div>
+          {(() => {
+            const venta = Number(d.monto) || 0, costo = Number(d.costo) || 0, margen = venta - costo;
+            const pct = venta > 0 && d.costo !== "" ? Math.round((margen / venta) * 100) : null;
+            return (
+              <div className="rounded-xl border p-2.5" style={{ borderColor: C.borde, background: C.panel }}>
+                <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Costo y margen real</div>
+                <input value={d.costo} onChange={(e) => setD({ ...d, costo: e.target.value })} inputMode="decimal" placeholder="Costo de la venta (tu costo neto total)" className="w-full rounded-lg px-3 py-2 text-sm" style={{ ...inp, ...mono }} />
+                {d.costo !== "" && venta > 0 ? (
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span style={{ color: C.dim }}>Margen: <b style={{ color: margen >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(margen)}</b></span>
+                    {pct != null ? <span className="font-semibold" style={{ color: margen >= 0 ? "#1F7A55" : C.rojo }}>{pct}%</span> : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><FileText size={12} /> Facturación{facturas.length ? ` · ${fMXN(totalFacturado)}` : ""}</div>
+              <button onClick={addFactura} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Factura</button>
+            </div>
+            {facturas.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin pedidos/facturas. Agrega una por cada factura (pueden ser varias por cotización).</div> : facturas.map((f, i) => (
+              <div key={f.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: f.reasignada ? C.verde : C.borde, background: "#fff" }}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={f.pedido} onChange={(e) => setF(i, { pedido: e.target.value })} placeholder="# Pedido" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  <input value={f.factura} onChange={(e) => setF(i, { factura: e.target.value })} placeholder="# Factura" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input type="date" value={f.fechaFactura} onChange={(e) => setF(i, { fechaFactura: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                  <input value={f.monto} onChange={(e) => setF(i, { monto: e.target.value })} inputMode="decimal" placeholder="Monto sin IVA" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={f.facturista} onChange={(e) => setF(i, { facturista: e.target.value })} placeholder="Facturista" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                  <select value={f.estado} onChange={(e) => setF(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="surtido">Surtido</option><option value="parcial">Parcial</option><option value="pendiente">Pendiente</option></select>
+                </div>
+                <div className="flex items-center justify-between">
+                  <button onClick={() => setF(i, { reasignada: !f.reasignada })} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: f.reasignada ? "#1F7A55" : C.dim }}>
+                    <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: f.reasignada ? C.verde : C.borde, background: f.reasignada ? C.verde : "#fff" }}>{f.reasignada ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
+                    Reasignada
+                  </button>
+                  <button onClick={() => delF(i)} style={{ color: C.rojo }}><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Package size={12} /> Compras a proveedor</div>
+              <button onClick={addCompra} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> OC</button>
+            </div>
+            {compras.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin órdenes de compra. Registra las OC a Schneider/Siemens y sus tiempos de entrega.</div> : compras.map((c, i) => {
+              const atrasada = c.estado !== "recibido" && c.fechaEntrega && c.fechaEntrega < hoy();
+              return (
+                <div key={c.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: atrasada ? C.rojo : (c.estado === "recibido" ? C.verde : C.borde), background: "#fff" }}>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input value={c.proveedor} onChange={(e) => setC(i, { proveedor: e.target.value })} placeholder="Proveedor (Schneider…)" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                    <input value={c.numOC} onChange={(e) => setC(i, { numOC: e.target.value })} placeholder="# OC proveedor" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div><div className="text-[10px]" style={{ color: C.dim }}>Fecha OC</div><input type="date" value={c.fechaOC} onChange={(e) => setC(i, { fechaOC: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
+                    <div><div className="text-[10px]" style={{ color: atrasada ? C.rojo : C.dim }}>Entrega estim.{atrasada ? " · ATRASADA" : ""}</div><input type="date" value={c.fechaEntrega} onChange={(e) => setC(i, { fechaEntrega: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input value={c.monto} onChange={(e) => setC(i, { monto: e.target.value })} inputMode="decimal" placeholder="Costo" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                    <select value={c.estado} onChange={(e) => setC(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="pendiente">Pendiente</option><option value="transito">En tránsito</option><option value="recibido">Recibido</option></select>
+                  </div>
+                  <div className="flex justify-end"><button onClick={() => delC(i)} style={{ color: C.rojo }}><Trash2 size={14} /></button></div>
+                </div>
+              );
+            })}
+          </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas y acuerdos de visita" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           {!nueva && d.cliente.trim() ? (
             <button onClick={() => enviarTexto(mensajeEstatus((d.vendedor || "").trim(), [{ ...opp, ...d, monto: d.moneda === "USD" && d.monto ? Math.round(Number(d.monto) * (tc || 0)) : (d.monto === "" ? null : Number(d.monto)) }]))} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, color: "#2C5A8F", background: C.azulBg }}>
@@ -1075,7 +1155,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
             </button>
           ) : null}
           <div className="flex gap-2 pt-1">
-            <button onClick={() => d.cliente.trim() && onGuardar({ ...opp, ...d, monto: d.monto === "" ? null : (d.moneda === "USD" ? Math.round(Number(d.monto) * (tc || 0)) : Number(d.monto)), moneda: d.moneda, montoOrig: d.moneda === "USD" && d.monto !== "" ? Number(d.monto) : null, tcCaptura: d.moneda === "USD" ? (tc || null) : null, margen: d.margen === "" ? null : Number(d.margen) })}
+            <button onClick={() => d.cliente.trim() && onGuardar({ ...opp, ...d, facturas, compras, costo: d.costo === "" ? null : Number(d.costo), monto: d.monto === "" ? null : (d.moneda === "USD" ? Math.round(Number(d.monto) * (tc || 0)) : Number(d.monto)), moneda: d.moneda, montoOrig: d.moneda === "USD" && d.monto !== "" ? Number(d.monto) : null, tcCaptura: d.moneda === "USD" ? (tc || null) : null, margen: d.margen === "" ? null : Number(d.margen) })}
               className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>
               {nueva ? "Crear oportunidad" : "Guardar cambios"}
             </button>
@@ -1574,6 +1654,28 @@ function AnalisisSheet({ pipeline, onCerrar }) {
               </div>
             );
           })()}
+          {(() => {
+            const conCosto = pipeline.filter((o) => o.costo != null && o.costo !== "" && (Number(o.monto) || 0) > 0);
+            if (!conCosto.length) return null;
+            const ventaTot = conCosto.reduce((s, o) => s + (Number(o.monto) || 0), 0);
+            const costoTot = conCosto.reduce((s, o) => s + (Number(o.costo) || 0), 0);
+            const margenTot = ventaTot - costoTot;
+            const pctTot = ventaTot > 0 ? Math.round((margenTot / ventaTot) * 100) : 0;
+            const porMarca = {};
+            conCosto.forEach((o) => { const m = (o.marca || "Sin marca").trim() || "Sin marca"; if (!porMarca[m]) porMarca[m] = { venta: 0, margen: 0 }; porMarca[m].venta += Number(o.monto) || 0; porMarca[m].margen += (Number(o.monto) || 0) - (Number(o.costo) || 0); });
+            const marcas = Object.entries(porMarca).sort((a, b) => b[1].margen - a[1].margen).slice(0, 6);
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Márgenes reales · {conCosto.length} tratos</div>
+                <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Venta</div><div className="text-sm font-semibold" style={mono}>{fMXN(ventaTot)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Costo</div><div className="text-sm font-semibold" style={mono}>{fMXN(costoTot)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Margen</div><div className="text-sm font-semibold" style={{ ...mono, color: "#1F7A55" }}>{fMXN(margenTot)} · {pctTot}%</div></div>
+                </div>
+                {marcas.map(([m, v]) => <div key={m} className="flex justify-between text-xs py-0.5" style={{ color: C.tinta }}><span className="truncate">{m}</span><span style={{ ...mono, color: "#1F7A55" }} className="ml-2 whitespace-nowrap">{fMXN(v.margen)} · {v.venta > 0 ? Math.round((v.margen / v.venta) * 100) : 0}%</span></div>)}
+              </div>
+            );
+          })()}
           {/* Embudo */}
           <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
             <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Embudo de conversión</div>
@@ -1851,68 +1953,148 @@ function AsistenteIASheet({ data, onCerrar }) {
 
 /* ── Reasignación de facturas (gerente / admin) ───────────────────── */
 function ReasignacionSheet({ pipeline, equipo, onActualizar, onCerrar }) {
-  const facturadas = (pipeline || []).filter((o) => o.etapa === "facturado");
-  const [edits, setEdits] = useState(() => {
-    const m = {};
-    facturadas.forEach((o) => { m[o.id] = { zonaReasignar: o.zonaReasignar || "", numCliente: o.numCliente || "", montoSinIva: o.montoSinIva != null ? String(o.montoSinIva) : "" }; });
-    return m;
-  });
   const nom = (id) => (equipo.find((m) => m.id === id) || {}).nombre || "";
-  const setCampo = (id, k, v) => setEdits((e) => ({ ...e, [id]: { ...e[id], [k]: v } }));
+  const lineas = [];
+  (pipeline || []).forEach((o) => (o.facturas || []).forEach((f) => lineas.push({ o, f })));
+  const [marcadas, setMarcadas] = useState(() => { const s = {}; lineas.forEach(({ o, f }) => { s[o.id + "::" + f.id] = !!f.reasignada; }); return s; });
+  const [oppEdits, setOppEdits] = useState(() => { const m = {}; (pipeline || []).forEach((o) => { if ((o.facturas || []).length) m[o.id] = { zonaReasignar: o.zonaReasignar || "", numCliente: o.numCliente || "" }; }); return m; });
+  const [verTodas, setVerTodas] = useState(false);
+  const k = (o, f) => o.id + "::" + f.id;
+  const sinReasignar = lineas.filter(({ o, f }) => !marcadas[k(o, f)]);
+  const totalFact = lineas.reduce((s, { f }) => s + (Number(f.monto) || 0), 0);
+  const totalSin = sinReasignar.reduce((s, { f }) => s + (Number(f.monto) || 0), 0);
+  const sinFacturar = (pipeline || []).filter((o) => ["oc", "pedido", "facturado"].includes(o.etapa) && (o.facturas || []).length === 0);
+  const mostrar = verTodas ? lineas : sinReasignar;
+  const setOpp = (id, key, v) => setOppEdits((m) => ({ ...m, [id]: { ...m[id], [key]: v } }));
+  const toggle = (o, f) => setMarcadas((m) => ({ ...m, [k(o, f)]: !m[k(o, f)] }));
   const guardar = () => {
-    const lista = facturadas.map((o) => { const e = edits[o.id] || {}; return { ...o, zonaReasignar: e.zonaReasignar || "", numCliente: e.numCliente || "", montoSinIva: e.montoSinIva === "" ? null : Number(e.montoSinIva) }; });
-    onActualizar(lista);
+    const cambios = {};
+    const asegura = (o) => { if (!cambios[o.id]) cambios[o.id] = { ...o, facturas: (o.facturas || []).map((x) => ({ ...x })) }; return cambios[o.id]; };
+    lineas.forEach(({ o, f }) => { const r = !!marcadas[k(o, f)]; if (r !== !!f.reasignada) { const fx = asegura(o).facturas.find((x) => x.id === f.id); if (fx) fx.reasignada = r; } });
+    Object.entries(oppEdits).forEach(([id, e]) => { const o = (pipeline || []).find((x) => x.id === id); if (!o) return; if ((e.zonaReasignar || "") !== (o.zonaReasignar || "") || (e.numCliente || "") !== (o.numCliente || "")) { const c = asegura(o); c.zonaReasignar = e.zonaReasignar || ""; c.numCliente = e.numCliente || ""; } });
+    if (Object.keys(cambios).length) onActualizar(Object.values(cambios));
   };
   const exportar = () => {
     const header = ["COTIZACIÓN", "PEDIDO", "FACTURA", "FECHA FACTURA", "CLIENTE", "# DE CLIENTE", "ZONA A REASIGNAR", "COTIZADOR A&C", "VENDEDOR DE CAMPO INVOLUCRADO", "VENDEDOR A&C INVOLUCRADO", "MONTO SIN IVA"];
-    const filas = [header, ...facturadas.map((o) => {
-      const e = edits[o.id] || {};
-      return [o.numCotizacion || "", o.numPedido || "", o.numFactura || "", o.fechaFactura || "", o.cliente || "",
-        e.numCliente || "", e.zonaReasignar || "", nom(o.cotizadorId), o.origen || o.vendedor || "", nom(o.traidoPorId || o.vendedorId),
-        e.montoSinIva !== "" && e.montoSinIva != null ? Number(e.montoSinIva) : (o.monto || "")];
-    })];
-    const tipos = ["text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "money"];
-    exportarXLSX(`Reasignacion_Facturas_${hoy()}.xlsx`, "REASIGNACIONES", filas, tipos);
+    const filas = [header, ...mostrar.map(({ o, f }) => { const e = oppEdits[o.id] || {}; return [o.numCotizacion || "", f.pedido || "", f.factura || "", f.fechaFactura || "", o.cliente || "", e.numCliente || o.numCliente || "", e.zonaReasignar || o.zonaReasignar || "", nom(o.cotizadorId), o.origen || o.vendedor || "", nom(o.traidoPorId || o.vendedorId), Number(f.monto) || ""]; })];
+    exportarXLSX(`Reasignacion_Facturas_${hoy()}.xlsx`, "REASIGNACIONES", filas, ["text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "money"]);
   };
+  const Tar = ({ label, valor, sub, color, bg }) => (
+    <div className="rounded-xl border p-2.5 text-center" style={{ borderColor: color, background: bg || "#fff" }}>
+      <div className="text-[10px] uppercase font-semibold" style={{ ...dsp, color, letterSpacing: "0.05em" }}>{label}</div>
+      <div className="text-base font-semibold" style={{ ...mono, color: C.tinta }}>{valor}</div>
+      {sub ? <div className="text-[10px]" style={{ color: C.dim }}>{sub}</div> : null}
+    </div>
+  );
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
-          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileSpreadsheet size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Reasignación de facturas</span></span>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileSpreadsheet size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Control de facturación</span></span>
           <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
         </div>
         <div className="p-4 pb-8 space-y-3">
-          <div className="text-xs" style={{ color: C.dim }}>Aquí están tus facturadas. Completa zona, # de cliente y monto sin IVA; lo demás se toma solo. Luego exporta el Excel en el formato de reasignación.</div>
-          {facturadas.length === 0 ? <Vacio>Aún no hay oportunidades facturadas.</Vacio> : (
+          <div className="grid grid-cols-3 gap-2">
+            <Tar label="Sin reasignar" valor={sinReasignar.length} sub={fMXN(totalSin)} color={sinReasignar.length ? C.rojo : C.verde} bg={sinReasignar.length ? C.rojoBg : "#fff"} />
+            <Tar label="Facturado" valor={lineas.length} sub={fMXN(totalFact)} color={C.azul} />
+            <Tar label="Sin facturar" valor={sinFacturar.length} sub="ganadas" color={sinFacturar.length ? C.ambar : C.verde} />
+          </div>
+          {sinFacturar.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.ambar, background: C.ambarBg, color: "#8A5A00" }}>Hay {sinFacturar.length} oportunidad(es) ganada(s) sin factura registrada: {sinFacturar.slice(0, 4).map((o) => o.cliente).join(", ")}{sinFacturar.length > 4 ? "…" : ""}. Agrégalas desde su ficha.</div> : null}
+          <div className="flex items-center justify-between">
+            <div className="text-xs" style={{ color: C.dim }}>{verTodas ? "Todas las facturas" : "Facturas por reasignar"} · {mostrar.length}</div>
+            <button onClick={() => setVerTodas((v) => !v)} className="text-xs font-semibold" style={{ color: C.azul }}>{verTodas ? "Ver solo pendientes" : "Ver todas"}</button>
+          </div>
+          {lineas.length === 0 ? <Vacio>Aún no hay facturas registradas. Ábre una oportunidad y agrégalas en «Facturación».</Vacio> : mostrar.length === 0 ? <div className="rounded-lg border px-3 py-4 text-sm text-center" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>✓ Todas las facturas están reasignadas.</div> : (
             <div className="space-y-2">
-              {facturadas.map((o) => {
-                const e = edits[o.id] || {};
+              {mostrar.map(({ o, f }) => {
+                const e = oppEdits[o.id] || {};
+                const r = !!marcadas[k(o, f)];
                 return (
-                  <div key={o.id} className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+                  <div key={k(o, f)} className="rounded-xl border p-3 space-y-2" style={{ borderColor: r ? C.verde : C.borde, background: r ? C.verdeBg : C.panel }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold truncate">{o.cliente}</div>
-                        <div className="text-xs" style={{ ...mono, color: C.dim }}>{[o.numFactura && "F: " + o.numFactura, o.numCotizacion && "C: " + o.numCotizacion, o.fechaFactura].filter(Boolean).join(" · ")}</div>
+                        <div className="text-xs" style={{ ...mono, color: C.dim }}>{[f.factura && "F: " + f.factura, f.pedido && "P: " + f.pedido, o.numCotizacion && "C: " + o.numCotizacion, f.fechaFactura].filter(Boolean).join(" · ")}</div>
                       </div>
-                      <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(o.monto)}</div>
+                      <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(Number(f.monto) || 0)}</div>
                     </div>
                     <div className="text-xs" style={{ color: C.azul }}>{[nom(o.traidoPorId || o.vendedorId) && "A&C: " + nom(o.traidoPorId || o.vendedorId), nom(o.cotizadorId) && "Cotizó: " + nom(o.cotizadorId), (o.origen || o.vendedor) && "Campo: " + (o.origen || o.vendedor)].filter(Boolean).join(" · ") || "—"}</div>
-                    <input value={e.zonaReasignar} onChange={(ev) => setCampo(o.id, "zonaReasignar", ev.target.value)} placeholder="Zona a reasignar (ej. AUTOMATIZACIÓN Y CONTROL LEÓN)" className="w-full rounded-lg px-3 py-2 text-sm" style={inp} />
+                    <input value={e.zonaReasignar || ""} onChange={(ev) => setOpp(o.id, "zonaReasignar", ev.target.value)} placeholder="Zona a reasignar (ej. AUTOMATIZACIÓN Y CONTROL LEÓN)" className="w-full rounded-lg px-3 py-2 text-sm" style={inp} />
                     <div className="grid grid-cols-2 gap-2">
-                      <input value={e.numCliente} onChange={(ev) => setCampo(o.id, "numCliente", ev.target.value)} placeholder="# de cliente" className="rounded-lg px-3 py-2 text-sm" style={inp} />
-                      <input value={e.montoSinIva} onChange={(ev) => setCampo(o.id, "montoSinIva", ev.target.value)} inputMode="decimal" placeholder="Monto sin IVA" className="rounded-lg px-3 py-2 text-sm" style={{ ...inp, ...mono }} />
+                      <input value={e.numCliente || ""} onChange={(ev) => setOpp(o.id, "numCliente", ev.target.value)} placeholder="# de cliente" className="rounded-lg px-3 py-2 text-sm" style={inp} />
+                      <button onClick={() => toggle(o, f)} className="rounded-lg px-3 py-2 text-sm font-semibold flex items-center justify-center gap-1.5 border" style={{ borderColor: r ? C.verde : C.borde, color: r ? "#1F7A55" : C.dim, background: "#fff" }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: r ? C.verde : C.borde, background: r ? C.verde : "#fff" }}>{r ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
+                        Reasignada
+                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-          {facturadas.length > 0 ? (
+          {lineas.length > 0 ? (
             <div className="flex gap-2 pt-1">
               <button onClick={guardar} className="flex-1 py-2.5 rounded-xl border font-semibold text-sm" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>Guardar cambios</button>
-              <button onClick={exportar} className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileSpreadsheet size={15} /> Exportar Excel</button>
+              <button onClick={exportar} className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileSpreadsheet size={15} /> Exportar {verTodas ? "todas" : "pendientes"}</button>
             </div>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Compras y entregas (OC a proveedores) ────────────────────────── */
+function ComprasSheet({ pipeline, onCerrar }) {
+  const compras = [];
+  (pipeline || []).forEach((o) => (o.compras || []).forEach((c) => compras.push({ o, c })));
+  const atrasada = (c) => c.estado !== "recibido" && c.fechaEntrega && c.fechaEntrega < hoy();
+  const atrasadas = compras.filter(({ c }) => atrasada(c));
+  const enTransito = compras.filter(({ c }) => c.estado === "transito");
+  const pendientes = compras.filter(({ c }) => c.estado === "pendiente");
+  const orden = { pendiente: 0, transito: 1, recibido: 2 };
+  const lista = [...compras].sort((a, b) => (Number(atrasada(b.c)) - Number(atrasada(a.c))) || (orden[a.c.estado] - orden[b.c.estado]) || ((a.c.fechaEntrega || "").localeCompare(b.c.fechaEntrega || "")));
+  const EST = { pendiente: { l: "Pendiente", c: C.ambar }, transito: { l: "En tránsito", c: C.azul }, recibido: { l: "Recibido", c: C.verde } };
+  const dias = (f) => { const n = diasEntre(hoy(), f); return n; };
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Package size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Compras y entregas</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[["Pendientes", pendientes.length, C.ambar], ["En tránsito", enTransito.length, C.azul], ["Atrasadas", atrasadas.length, atrasadas.length ? C.rojo : C.verde]].map(([l, n, col]) => (
+              <div key={l} className="rounded-xl border p-2.5" style={{ borderColor: col, background: "#fff" }}>
+                <div className="text-[10px] uppercase font-semibold" style={{ ...dsp, color: col, letterSpacing: "0.05em" }}>{l}</div>
+                <div className="text-base font-semibold" style={{ ...mono, color: C.tinta }}>{n}</div>
+              </div>
+            ))}
+          </div>
+          {atrasadas.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>⏰ {atrasadas.length} entrega(s) atrasada(s): {atrasadas.slice(0, 4).map(({ o, c }) => `${c.proveedor || "OC"} (${o.cliente})`).join(", ")}{atrasadas.length > 4 ? "…" : ""}.</div> : null}
+          {compras.length === 0 ? <Vacio>Sin órdenes de compra. Regístralas en la ficha de cada oportunidad, sección «Compras a proveedor».</Vacio> : (
+            <div className="space-y-2">
+              {lista.map(({ o, c }) => {
+                const at = atrasada(c); const est = EST[c.estado] || EST.pendiente; const dEnt = c.fechaEntrega ? dias(c.fechaEntrega) : null;
+                return (
+                  <div key={c.id} className="rounded-xl border p-3" style={{ borderColor: at ? C.rojo : (c.estado === "recibido" ? C.borde : est.c), background: c.estado === "recibido" ? C.panel : "#fff" }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{c.proveedor || "Proveedor"}{c.numOC ? ` · ${c.numOC}` : ""}</div>
+                        <div className="text-xs truncate" style={{ color: C.dim }}>{o.cliente}{o.titulo ? " · " + o.titulo : ""}</div>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: est.c, background: est.c + "22" }}>{est.l}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5 text-xs">
+                      <span style={{ color: at ? C.rojo : C.dim }}>{c.fechaEntrega ? (c.estado === "recibido" ? "Entregó" : at ? `Atrasada ${Math.abs(dEnt)}d` : dEnt === 0 ? "Llega hoy" : dEnt > 0 ? `Llega en ${dEnt}d` : "") + (c.estado !== "recibido" ? ` (${c.fechaEntrega})` : "") : "Sin fecha de entrega"}</span>
+                      {c.monto ? <span style={{ ...mono, color: C.tinta }}>{fMXN(Number(c.monto) || 0)}</span> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2004,6 +2186,8 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.0.0 — Brida ahora es ERP + CRM. Fase 2: costo y margen real por trato (venta − costo), con márgenes por marca en Análisis. Fase 3: compras a proveedores — registra las OC a Schneider/Siemens con tiempos de entrega, y un tablero «Compras y entregas» con pendientes, en tránsito y entregas atrasadas.",
+    "v4.9.0 — Pedidos y facturas multi-línea (Fase 1 del ERP): cada oportunidad puede tener varios pedidos y varias facturas (# pedido, # factura, fecha, monto sin IVA, facturista, estado y marca de reasignada). Nuevo tablero «Control de facturación» con facturas sin reasignar, sin facturar y total facturado; la reasignación ahora exporta UNA fila por factura, así ninguna se escapa.",
     "v4.8.0 — Listas de precios por marca: al importar indicas la marca y la versión (ej. Schneider · 06 Abr 2026); re-subir actualiza precios. El catálogo muestra las listas cargadas por marca. La carátula queda guardada para todo el equipo (solo la re-subes para actualizar). En la lista de clientes, el fondo de la tarjeta cambia de color según su clasificación (clave, recurrente, pide y no cierra).",
     "v4.7.0 — Margen en la cotización: al elegir del catálogo ahora ves el costo neto, agregas con buscador y juegas con el margen (markup) — el precio se recalcula solo. Importador de precios afinado al formato Schneider (Catálogo, Descripción, Precio de Lista, Código Descuento).",
     "v4.6.0 — Listas de precios con descuentos en el catálogo: importa tu carátula (código de descuento → factor) y tu lista de precios desde Excel. Cada producto guarda precio de lista y código de descuento, y el catálogo calcula solo el costo neto (precio de lista × factor).",
@@ -2158,7 +2342,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v4.8.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.0.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2370,6 +2554,7 @@ export default function App() {
   const [equipo, setEquipo] = useState([]);
   const [gerenteOpen, setGerenteOpen] = useState(false);
   const [reasigOpen, setReasigOpen] = useState(false);
+  const [comprasOpen, setComprasOpen] = useState(false);
   const [sync, setSync] = useState("local");
   const dataRef = useRef(null);
   const sesionRef = useRef(null);
@@ -3027,6 +3212,9 @@ export default function App() {
             <button onClick={() => setIaOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.ambar, color: "#fff" }}>
               <Zap size={16} /> Asistente IA
             </button>
+            <button onClick={() => setComprasOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+              <Package size={16} /> Compras y entregas
+            </button>
             {(rol === "gerente" || rol === "admin") && (
               <button onClick={() => setGerenteOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
                 <Users size={16} /> Tablero de gerente
@@ -3034,7 +3222,7 @@ export default function App() {
             )}
             {(rol === "gerente" || rol === "admin") && (
               <button onClick={() => setReasigOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
-                <FileSpreadsheet size={16} /> Reasignación de facturas
+                <FileSpreadsheet size={16} /> Control de facturación
               </button>
             )}
             {(() => {
@@ -3709,6 +3897,7 @@ export default function App() {
       {reasigOpen && <ReasignacionSheet pipeline={data.pipeline} equipo={equipo} onActualizar={(lista) => { const t = new Date().toISOString(); const byId = Object.fromEntries(lista.map((o) => [o.id, o])); guardar({ ...data, pipeline: data.pipeline.map((x) => byId[x.id] ? { ...x, ...byId[x.id], actualizada: t } : x) }); }} onCerrar={() => setReasigOpen(false)} />}
       {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
       {iaOpen && <AsistenteIASheet data={data} onCerrar={() => setIaOpen(false)} />}
+      {comprasOpen && <ComprasSheet pipeline={data.pipeline} onCerrar={() => setComprasOpen(false)} />}
     </div>
   );
 }

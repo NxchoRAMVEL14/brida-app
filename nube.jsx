@@ -283,7 +283,10 @@ export async function subirNube(uid, estado) {
   const borrarSnap = async (tabla, snapSet, idsVivos) => {
     const vivos = new Set(idsVivos);
     const aBorrar = [...(snapSet || [])].filter((id) => !vivos.has(id));
-    if (aBorrar.length) { const { error } = await sb.from(tabla).delete().in("id", aBorrar); if (error) throw error; }
+    for (let i = 0; i < aBorrar.length; i += 150) {
+      const { error } = await sb.from(tabla).delete().in("id", aBorrar.slice(i, i + 150));
+      if (error) throw error;
+    }
   };
 
   await paso("oportunidades", async () => {
@@ -365,8 +368,8 @@ async function borrarFaltantes(tabla, ownerCol, uid, idsVivos) {
   const vivos = new Set(idsVivos);
   const existentes = await idsDe(tabla, ownerCol, uid);
   const aBorrar = existentes.filter((id) => !vivos.has(id));
-  if (aBorrar.length) {
-    const { error } = await sb.from(tabla).delete().in("id", aBorrar);
+  for (let i = 0; i < aBorrar.length; i += 150) {
+    const { error } = await sb.from(tabla).delete().in("id", aBorrar.slice(i, i + 150));
     if (error) throw error;
   }
 }

@@ -2237,6 +2237,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.4.0 — Reportes financieros (Fase 5, en modo ERP): tablero con del embudo a la caja (cotizado→ganado→facturado→margen y % de conversión), facturado por mes (12 meses), ranking por vendedor y por marca, y comisiones. Con botón para exportar todo el reporte a Excel. Se alimenta solo de lo que ya capturas.",
     "v5.3.0 — Importar clientes desde Excel (No., Cliente, Segmento, Ciudad, Entidad) con dedupe automático, y número de cliente en toda la app: en clientes y oportunidades ahora puedes buscar por número (del sistema Elektron), no solo por razón social. Al elegir cliente en una oportunidad se autollena su número.",
     "v5.0.0 — Brida ahora es ERP + CRM. Fase 2: costo y margen real por trato (venta − costo), con márgenes por marca en Análisis. Fase 3: compras a proveedores — registra las OC a Schneider/Siemens con tiempos de entrega, y un tablero «Compras y entregas» con pendientes, en tránsito y entregas atrasadas.",
     "v4.9.0 — Pedidos y facturas multi-línea (Fase 1 del ERP): cada oportunidad puede tener varios pedidos y varias facturas (# pedido, # factura, fecha, monto sin IVA, facturista, estado y marca de reasignada). Nuevo tablero «Control de facturación» con facturas sin reasignar, sin facturar y total facturado; la reasignación ahora exporta UNA fila por factura, así ninguna se escapa.",
@@ -2394,7 +2395,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.3.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.4.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -3062,6 +3063,7 @@ export default function App() {
     { id: "facturacion", icon: FileSpreadsheet, label: "Facturas" },
     { id: "inventario", icon: Package, label: "Inventario" },
     { id: "margenes", icon: BarChart3, label: "Márgenes" },
+    { id: "reportes", icon: FileDown, label: "Reportes" },
   ];
   const NAV = modo === "erp" ? NAV_ERP : NAV_CRM;
   const cambiarModo = (m) => { setModo(m); setTab(m === "erp" ? "facturacion" : "hoy"); setExpand(null); };
@@ -3937,6 +3939,87 @@ export default function App() {
                 <Bloque titulo="Por marca" filas={agrupa((o) => o.marca)} />
               </>)}
               <div className="text-xs" style={{ color: C.dim }}>El margen usa el costo que capturas en cada oportunidad («Margen real»). Costo neto sugerido = precio de lista × factor de la carátula.</div>
+            </div>
+          );
+        })()}
+        {tab === "reportes" && (() => {
+          const pipe = data.pipeline || [];
+          const lineas = []; pipe.forEach((o) => (o.facturas || []).forEach((f) => lineas.push({ o, f })));
+          const facturadas = pipe.filter((o) => o.etapa === "facturado");
+          const mesDeOpp = (o) => { const f = o.fechaFactura || (o.facturas && o.facturas.length ? o.facturas.map((x) => x.fechaFactura).filter(Boolean).sort().slice(-1)[0] : "") || (o.actualizada || "").slice(0, 10); return f ? f.slice(0, 7) : ""; };
+          const hoyD = new Date(hoy());
+          const meses12 = [];
+          for (let i = 11; i >= 0; i--) { const d = new Date(hoyD.getFullYear(), hoyD.getMonth() - i, 1); meses12.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); }
+          const etiqMes = (k) => { const [y, m] = k.split("-"); return `${MESES[Number(m) - 1]} ${y.slice(2)}`; };
+          const porMes = {}; meses12.forEach((k) => porMes[k] = { fact: 0, venta: 0, costo: 0 });
+          lineas.forEach(({ f }) => { const k = (f.fechaFactura || "").slice(0, 7); if (porMes[k]) porMes[k].fact += Number(f.monto) || 0; });
+          facturadas.forEach((o) => { const k = mesDeOpp(o); if (porMes[k]) { porMes[k].venta += o.monto || 0; porMes[k].costo += o.costo || 0; } });
+          const maxFact = Math.max(1, ...meses12.map((k) => porMes[k].fact));
+          const suma = (arr) => arr.reduce((s, o) => s + (o.monto || 0), 0);
+          const cotiz = pipe.filter((o) => ["cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(o.etapa));
+          const ganado = pipe.filter((o) => ["oc", "pedido", "facturado"].includes(o.etapa));
+          const totCosto = facturadas.reduce((s, o) => s + (o.costo || 0), 0);
+          const margen = suma(facturadas) - totCosto;
+          const convGana = suma(cotiz) > 0 ? Math.round(suma(ganado) / suma(cotiz) * 100) : null;
+          const convFact = suma(ganado) > 0 ? Math.round(suma(facturadas) / suma(ganado) * 100) : null;
+          const rank = (fn) => { const m = {}; facturadas.forEach((o) => { const k = fn(o) || "—"; m[k] = (m[k] || 0) + (o.monto || 0); }); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 8); };
+          const porVend = rank((o) => (equipo.find((x) => x.id === (o.traidoPorId || o.vendedorId)) || {}).nombre);
+          const porMarca = rank((o) => o.marca);
+          const comis = facturadas.reduce((s, o) => { const cp = o.comisionPct === "" || o.comisionPct == null ? 0 : Number(o.comisionPct); return s + ((o.monto || 0) * (o.margen || 0) / 100) * cp / 100; }, 0);
+          const exportar = () => {
+            const filas = [
+              ["REPORTE FINANCIERO — BRIDA", "", "", ""], ["Generado", hoy(), "", ""], ["", "", "", ""],
+              ["FACTURADO POR MES", "", "", ""], ["Mes", "Facturado", "Costo", "Margen"],
+              ...meses12.map((k) => [etiqMes(k), porMes[k].fact, porMes[k].costo, porMes[k].venta - porMes[k].costo]),
+              ["", "", "", ""], ["FACTURADO POR VENDEDOR (A&C)", "", "", ""], ...porVend.map(([k, v]) => [k, v, "", ""]),
+              ["", "", "", ""], ["FACTURADO POR MARCA", "", "", ""], ...porMarca.map(([k, v]) => [k, v, "", ""]),
+              ["", "", "", ""], ["DEL EMBUDO A LA CAJA", "Monto", "", ""],
+              ["Cotizado", suma(cotiz), "", ""], ["Ganado", suma(ganado), "", ""], ["Facturado", suma(facturadas), "", ""],
+              ["Margen real", margen, "", ""], ["Comisiones", comis, "", ""],
+            ];
+            exportarXLSX(`Reporte_Financiero_${hoy()}.xlsx`, "REPORTE", filas, ["text", "money", "money", "money"]);
+          };
+          return (
+            <div className="space-y-3">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>ERP · Reportes financieros</div>
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Del embudo a la caja</div>
+                <div className="space-y-1.5">
+                  {[["Cotizado", suma(cotiz), C.azul], ["Ganado", suma(ganado), C.verde], ["Facturado", suma(facturadas), "#1F7A55"], ["Margen real", margen, "#8A5A00"]].map(([lbl, val, col]) => (
+                    <div key={lbl} className="flex items-center justify-between"><span className="text-sm" style={{ color: C.tinta }}>{lbl}</span><span className="text-sm font-semibold" style={{ ...mono, color: col }}>{fMXN(val)}</span></div>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-2 text-[11px]" style={{ color: C.dim }}>
+                  {convGana != null ? <span>Cotizado→Ganado: <b style={{ color: C.tinta }}>{convGana}%</b></span> : null}
+                  {convFact != null ? <span>· Ganado→Facturado: <b style={{ color: C.tinta }}>{convFact}%</b></span> : null}
+                </div>
+              </div>
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Facturado por mes (12 meses)</div>
+                <div className="space-y-1">
+                  {meses12.map((k) => { const v = porMes[k].fact; return (
+                    <div key={k} className="flex items-center gap-2">
+                      <span className="text-[11px] w-12 shrink-0" style={{ ...mono, color: C.dim }}>{etiqMes(k)}</span>
+                      <div className="flex-1 h-4 rounded" style={{ background: "#EEF1F4" }}><div style={{ width: `${Math.round(v / maxFact * 100)}%`, height: "100%", background: C.azul, borderRadius: 4, minWidth: v > 0 ? 3 : 0 }} /></div>
+                      <span className="text-[11px] w-20 text-right shrink-0" style={{ ...mono, color: C.tinta }}>{fMXN(v)}</span>
+                    </div>
+                  ); })}
+                </div>
+              </div>
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-1" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Facturado por vendedor (A&C)</div>
+                {porVend.length ? porVend.map(([k, v]) => <div key={k} className="flex justify-between text-sm py-0.5"><span className="truncate" style={{ color: C.tinta }}>{k}</span><span className="font-semibold shrink-0 ml-2" style={{ ...mono, color: "#1F7A55" }}>{fMXN(v)}</span></div>) : <div className="text-xs" style={{ color: C.dim }}>Aún no hay facturado.</div>}
+              </div>
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-1" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Facturado por marca</div>
+                {porMarca.length ? porMarca.map(([k, v]) => <div key={k} className="flex justify-between text-sm py-0.5"><span className="truncate" style={{ color: C.tinta }}>{k}</span><span className="font-semibold shrink-0 ml-2" style={{ ...mono, color: "#1F7A55" }}>{fMXN(v)}</span></div>) : <div className="text-xs" style={{ color: C.dim }}>Aún no hay facturado.</div>}
+              </div>
+              <div className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: C.verde, background: C.verdeBg }}>
+                <span className="text-sm font-semibold" style={{ color: "#1F7A55" }}>Comisiones (facturado)</span>
+                <span className="text-base font-semibold" style={{ ...mono, color: "#1F7A55" }}>{fMXN(comis)}</span>
+              </div>
+              <button onClick={exportar} className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileDown size={16} /> Exportar reporte a Excel</button>
+              <div className="text-xs" style={{ color: C.dim }}>Todo se calcula de lo que ya capturas: facturas, costos y etapas.</div>
             </div>
           );
         })()}

@@ -153,6 +153,15 @@ const horasSinCambio = (o) => {
 };
 const staleVisita = (o) => o.etapa === "visita" && horasSinCambio(o) >= 24;
 const fraseDias = (n) => n == null ? "—" : n === 0 ? "mismo día" : n === 1 ? "1 día" : `${n} días`;
+function KPI({ label, v, sub, col, bg }) {
+  return (
+    <div className="rounded-xl border p-2.5 text-center" style={{ borderColor: col, background: bg || "#fff" }}>
+      <div className="text-[10px] uppercase font-semibold" style={{ fontFamily: "'Barlow Condensed',sans-serif", color: col, letterSpacing: "0.05em" }}>{label}</div>
+      <div className="text-lg font-semibold" style={{ fontFamily: "'IBM Plex Mono',monospace", color: "#182430" }}>{v}</div>
+      {sub ? <div className="text-[10px]" style={{ color: "#8FA0B3" }}>{sub}</div> : null}
+    </div>
+  );
+}
 const CLASE_CLIENTE = {
   clave: { label: "Cuenta clave", bg: "#FBF1D9", color: "#8A5A00", punto: "#C9A227", fondo: "#FCF6E1", borde: "#E7CE85" },
   recurrente: { label: "Recurrente", bg: "#E4F3EC", color: "#2F7A55", punto: "#2F9467", fondo: "#EDF7F1", borde: "#B9E0CB" },
@@ -895,7 +904,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
     fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
-    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", costo: opp.costo ?? "",
   });
   const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
   const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false }]);
@@ -903,9 +912,9 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
   const delF = (i) => setFacturas(facturas.filter((_, j) => j !== i));
   const totalFacturado = facturas.reduce((s, f) => s + (Number(f.monto) || 0), 0);
   const [compras, setCompras] = useState(() => (opp.compras || []).map((c) => ({ ...c, id: c.id || uid() })));
-  const addCompra = () => setCompras([...compras, { id: uid(), proveedor: "", numOC: "", fechaOC: hoy(), fechaEntrega: "", estado: "pendiente", monto: "", notas: "" }]);
-  const setC = (i, campos) => setCompras(compras.map((c, j) => j === i ? { ...c, ...campos } : c));
-  const delC = (i) => setCompras(compras.filter((_, j) => j !== i));
+  const addCompra = () => setCompras([...compras, { id: uid(), proveedor: opp.marca || "", numOC: "", fechaOC: hoy(), entrega: "", estado: "pendiente", monto: "", notas: "" }]);
+  const setCo = (i, campos) => setCompras(compras.map((c, j) => j === i ? { ...c, ...campos } : c));
+  const delCo = (i) => setCompras(compras.filter((_, j) => j !== i));
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
@@ -1088,6 +1097,43 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
               </div>
             );
           })()}
+          {(() => {
+            const venta = Number(d.monto) || 0, costo = Number(d.costo) || 0, mg = venta - costo;
+            const pct = venta > 0 ? Math.round(mg / venta * 100) : null;
+            return (
+              <div className="rounded-xl border p-2.5" style={{ borderColor: C.borde, background: C.panel }}>
+                <div className="flex items-center gap-1.5 text-xs uppercase font-semibold mb-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><BarChart3 size={12} /> Margen real</div>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Venta</div><div className="text-sm font-semibold" style={mono}>{fMXN(venta)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Costo</div><input value={d.costo} onChange={(e) => setD({ ...d, costo: e.target.value })} inputMode="decimal" placeholder="0" className="w-full rounded-lg px-2 py-1 text-sm" style={{ ...inp, ...mono }} /></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Margen</div><div className="text-sm font-semibold" style={{ ...mono, color: mg >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(mg)}{pct != null ? ` · ${pct}%` : ""}</div></div>
+                </div>
+              </div>
+            );
+          })()}
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Package size={12} /> Compras a proveedor</div>
+              <button onClick={addCompra} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> OC</button>
+            </div>
+            {compras.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin órdenes de compra. Agrega la OC a Schneider/Siemens con su tiempo de entrega.</div> : compras.map((c, i) => (
+              <div key={c.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: c.estado === "recibido" ? C.verde : C.borde, background: "#fff" }}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={c.proveedor} onChange={(e) => setCo(i, { proveedor: e.target.value })} placeholder="Proveedor" className="rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                  <input value={c.numOC} onChange={(e) => setCo(i, { numOC: e.target.value })} placeholder="# OC" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Fecha OC</div><input type="date" value={c.fechaOC} onChange={(e) => setCo(i, { fechaOC: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Entrega estimada</div><input type="date" value={c.entrega} onChange={(e) => setCo(i, { entrega: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={c.monto} onChange={(e) => setCo(i, { monto: e.target.value })} inputMode="decimal" placeholder="Costo" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  <select value={c.estado} onChange={(e) => setCo(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="pendiente">Pendiente</option><option value="transito">En tránsito</option><option value="recibido">Recibido</option></select>
+                </div>
+                <div className="flex justify-end"><button onClick={() => delCo(i)} style={{ color: C.rojo }}><Trash2 size={14} /></button></div>
+              </div>
+            ))}
+          </div>
           <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
             <div className="flex items-center justify-between">
               <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><FileText size={12} /> Facturación{facturas.length ? ` · ${fMXN(totalFacturado)}` : ""}</div>
@@ -1116,32 +1162,6 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
                 </div>
               </div>
             ))}
-          </div>
-          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
-            <div className="flex items-center justify-between">
-              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Package size={12} /> Compras a proveedor</div>
-              <button onClick={addCompra} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> OC</button>
-            </div>
-            {compras.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin órdenes de compra. Registra las OC a Schneider/Siemens y sus tiempos de entrega.</div> : compras.map((c, i) => {
-              const atrasada = c.estado !== "recibido" && c.fechaEntrega && c.fechaEntrega < hoy();
-              return (
-                <div key={c.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: atrasada ? C.rojo : (c.estado === "recibido" ? C.verde : C.borde), background: "#fff" }}>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input value={c.proveedor} onChange={(e) => setC(i, { proveedor: e.target.value })} placeholder="Proveedor (Schneider…)" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
-                    <input value={c.numOC} onChange={(e) => setC(i, { numOC: e.target.value })} placeholder="# OC proveedor" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div><div className="text-[10px]" style={{ color: C.dim }}>Fecha OC</div><input type="date" value={c.fechaOC} onChange={(e) => setC(i, { fechaOC: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
-                    <div><div className="text-[10px]" style={{ color: atrasada ? C.rojo : C.dim }}>Entrega estim.{atrasada ? " · ATRASADA" : ""}</div><input type="date" value={c.fechaEntrega} onChange={(e) => setC(i, { fechaEntrega: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input value={c.monto} onChange={(e) => setC(i, { monto: e.target.value })} inputMode="decimal" placeholder="Costo" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
-                    <select value={c.estado} onChange={(e) => setC(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="pendiente">Pendiente</option><option value="transito">En tránsito</option><option value="recibido">Recibido</option></select>
-                  </div>
-                  <div className="flex justify-end"><button onClick={() => delC(i)} style={{ color: C.rojo }}><Trash2 size={14} /></button></div>
-                </div>
-              );
-            })}
           </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas y acuerdos de visita" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           {!nueva && d.cliente.trim() ? (
@@ -1644,6 +1664,24 @@ function AnalisisSheet({ pipeline, onCerrar }) {
             <Tarjeta label="Tasa de cierre" valor={winRate + "%"} sub={`${facturado.length} de ${cerradas || 0} cerradas`} color={winRate >= 50 ? C.verde : C.rojo} />
           </div>
           {(() => {
+            const gan = pipeline.filter((o) => o.etapa === "facturado");
+            const vT = gan.reduce((s, o) => s + (o.monto || 0), 0);
+            const cT = gan.reduce((s, o) => s + (o.costo || 0), 0);
+            const conCosto = gan.filter((o) => o.costo != null && o.costo !== "");
+            const mT = vT - cT, pct = vT > 0 && cT > 0 ? Math.round(mT / vT * 100) : null;
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-1" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Margen real (facturado)</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Venta</div><div className="text-sm font-semibold" style={mono}>{fMXN(vT)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Costo</div><div className="text-sm font-semibold" style={mono}>{fMXN(cT)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Margen</div><div className="text-sm font-semibold" style={{ ...mono, color: mT >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(mT)}{pct != null ? ` · ${pct}%` : ""}</div></div>
+                </div>
+                {conCosto.length < gan.length ? <div className="text-[10px] mt-1" style={{ color: C.dim }}>Solo {conCosto.length} de {gan.length} facturadas tienen costo capturado.</div> : null}
+              </div>
+            );
+          })()}
+          {(() => {
             const tR = pipeline.filter((o) => o.fechaCotizacion).map((o) => tiemposOpp(o).resp).filter((n) => n != null && n >= 0);
             const prom = tR.length ? Math.round(tR.reduce((a, b) => a + b, 0) / tR.length) : null;
             return (
@@ -2044,18 +2082,24 @@ function ReasignacionSheet({ pipeline, equipo, onActualizar, onCerrar }) {
   );
 }
 
-/* ── Compras y entregas (OC a proveedores) ────────────────────────── */
+
+/* ── Compras y entregas (Fase 3 · ERP) ────────────────────────────── */
 function ComprasSheet({ pipeline, onCerrar }) {
-  const compras = [];
-  (pipeline || []).forEach((o) => (o.compras || []).forEach((c) => compras.push({ o, c })));
-  const atrasada = (c) => c.estado !== "recibido" && c.fechaEntrega && c.fechaEntrega < hoy();
-  const atrasadas = compras.filter(({ c }) => atrasada(c));
-  const enTransito = compras.filter(({ c }) => c.estado === "transito");
-  const pendientes = compras.filter(({ c }) => c.estado === "pendiente");
-  const orden = { pendiente: 0, transito: 1, recibido: 2 };
-  const lista = [...compras].sort((a, b) => (Number(atrasada(b.c)) - Number(atrasada(a.c))) || (orden[a.c.estado] - orden[b.c.estado]) || ((a.c.fechaEntrega || "").localeCompare(b.c.fechaEntrega || "")));
-  const EST = { pendiente: { l: "Pendiente", c: C.ambar }, transito: { l: "En tránsito", c: C.azul }, recibido: { l: "Recibido", c: C.verde } };
-  const dias = (f) => { const n = diasEntre(hoy(), f); return n; };
+  const H = hoy();
+  const lineas = [];
+  (pipeline || []).forEach((o) => (o.compras || []).forEach((c) => lineas.push({ o, c })));
+  const [verTodas, setVerTodas] = useState(false);
+  const pendientes = lineas.filter(({ c }) => c.estado !== "recibido");
+  const vencidas = pendientes.filter(({ c }) => c.entrega && c.entrega < H);
+  const recibidas = lineas.filter(({ c }) => c.estado === "recibido");
+  const mostrar = (verTodas ? lineas : pendientes).slice().sort((a, b) => (a.c.entrega || "9999").localeCompare(b.c.entrega || "9999"));
+  const EST = { pendiente: { l: "Pendiente", col: C.ambar, bg: C.ambarBg }, transito: { l: "En tránsito", col: C.azul, bg: C.azulBg }, recibido: { l: "Recibido", col: C.verde, bg: C.verdeBg } };
+  const Tar = ({ label, valor, color, bg }) => (
+    <div className="rounded-xl border p-2.5 text-center" style={{ borderColor: color, background: bg || "#fff" }}>
+      <div className="text-[10px] uppercase font-semibold" style={{ ...dsp, color, letterSpacing: "0.05em" }}>{label}</div>
+      <div className="text-lg font-semibold" style={{ ...mono, color: C.tinta }}>{valor}</div>
+    </div>
+  );
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
@@ -2064,31 +2108,34 @@ function ComprasSheet({ pipeline, onCerrar }) {
           <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
         </div>
         <div className="p-4 pb-8 space-y-3">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            {[["Pendientes", pendientes.length, C.ambar], ["En tránsito", enTransito.length, C.azul], ["Atrasadas", atrasadas.length, atrasadas.length ? C.rojo : C.verde]].map(([l, n, col]) => (
-              <div key={l} className="rounded-xl border p-2.5" style={{ borderColor: col, background: "#fff" }}>
-                <div className="text-[10px] uppercase font-semibold" style={{ ...dsp, color: col, letterSpacing: "0.05em" }}>{l}</div>
-                <div className="text-base font-semibold" style={{ ...mono, color: C.tinta }}>{n}</div>
-              </div>
-            ))}
+          <div className="grid grid-cols-3 gap-2">
+            <Tar label="Por entregar" valor={pendientes.length} color={C.azul} />
+            <Tar label="Vencidas" valor={vencidas.length} color={vencidas.length ? C.rojo : C.verde} bg={vencidas.length ? C.rojoBg : "#fff"} />
+            <Tar label="Recibidas" valor={recibidas.length} color={C.verde} />
           </div>
-          {atrasadas.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>⏰ {atrasadas.length} entrega(s) atrasada(s): {atrasadas.slice(0, 4).map(({ o, c }) => `${c.proveedor || "OC"} (${o.cliente})`).join(", ")}{atrasadas.length > 4 ? "…" : ""}.</div> : null}
-          {compras.length === 0 ? <Vacio>Sin órdenes de compra. Regístralas en la ficha de cada oportunidad, sección «Compras a proveedor».</Vacio> : (
+          {vencidas.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{vencidas.length} orden(es) pasaron su fecha de entrega. Dale seguimiento al proveedor.</div> : null}
+          <div className="flex items-center justify-between">
+            <div className="text-xs" style={{ color: C.dim }}>{verTodas ? "Todas las órdenes" : "Por entregar"} · {mostrar.length}</div>
+            <button onClick={() => setVerTodas((v) => !v)} className="text-xs font-semibold" style={{ color: C.azul }}>{verTodas ? "Ver solo pendientes" : "Ver todas"}</button>
+          </div>
+          {lineas.length === 0 ? <Vacio>Sin órdenes de compra. Agrégalas en cada oportunidad, sección «Compras a proveedor».</Vacio> : mostrar.length === 0 ? <div className="rounded-lg border px-3 py-4 text-sm text-center" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>✓ Todo entregado.</div> : (
             <div className="space-y-2">
-              {lista.map(({ o, c }) => {
-                const at = atrasada(c); const est = EST[c.estado] || EST.pendiente; const dEnt = c.fechaEntrega ? dias(c.fechaEntrega) : null;
+              {mostrar.map(({ o, c }) => {
+                const e = EST[c.estado] || EST.pendiente;
+                const dias = c.entrega ? diasEntre(H, c.entrega) : null;
+                const venc = c.estado !== "recibido" && c.entrega && c.entrega < H;
                 return (
-                  <div key={c.id} className="rounded-xl border p-3" style={{ borderColor: at ? C.rojo : (c.estado === "recibido" ? C.borde : est.c), background: c.estado === "recibido" ? C.panel : "#fff" }}>
+                  <div key={o.id + c.id} className="rounded-xl border p-3 space-y-1" style={{ borderColor: venc ? C.rojo : C.borde, background: venc ? C.rojoBg : C.panel }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold truncate">{c.proveedor || "Proveedor"}{c.numOC ? ` · ${c.numOC}` : ""}</div>
                         <div className="text-xs truncate" style={{ color: C.dim }}>{o.cliente}{o.titulo ? " · " + o.titulo : ""}</div>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: est.c, background: est.c + "22" }}>{est.l}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0" style={{ background: e.bg, color: e.col }}>{e.l}</span>
                     </div>
-                    <div className="flex items-center justify-between mt-1.5 text-xs">
-                      <span style={{ color: at ? C.rojo : C.dim }}>{c.fechaEntrega ? (c.estado === "recibido" ? "Entregó" : at ? `Atrasada ${Math.abs(dEnt)}d` : dEnt === 0 ? "Llega hoy" : dEnt > 0 ? `Llega en ${dEnt}d` : "") + (c.estado !== "recibido" ? ` (${c.fechaEntrega})` : "") : "Sin fecha de entrega"}</span>
-                      {c.monto ? <span style={{ ...mono, color: C.tinta }}>{fMXN(Number(c.monto) || 0)}</span> : null}
+                    <div className="flex items-center justify-between text-xs" style={{ ...mono, color: venc ? "#8B2E2E" : C.dim }}>
+                      <span>{c.entrega ? `Entrega: ${c.entrega}${c.estado !== "recibido" && dias != null ? (dias < 0 ? ` (vencida ${-dias}d)` : dias === 0 ? " (hoy)" : ` (en ${dias}d)`) : ""}` : "Sin fecha de entrega"}</span>
+                      {c.monto ? <span>{fMXN(Number(c.monto))}</span> : null}
                     </div>
                   </div>
                 );
@@ -2342,7 +2389,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.0.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.1.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2501,6 +2548,7 @@ function AsistenteSheet({ onCerrar, onAplicar }) {
 export default function App() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("hoy");
+  const [modo, setModo] = useState("crm");
   const [ahora, setAhora] = useState(Date.now());
   const [expand, setExpand] = useState(null);
   const [oppEdit, setOppEdit] = useState(null);
@@ -2615,19 +2663,22 @@ export default function App() {
       setSync("sincronizando");
       try {
         const fila = await leerNube(uid);
-        const nube = fila && fila.data;
-        const nubeTs = (nube && nube.__actualizado) || (fila && fila.actualizado) || "";
+        const nube = (fila && fila.data) || {};
+        const nubeTs = (nube.__actualizado) || (fila && fila.actualizado) || "";
         const localTs = (local && local.__actualizado) || "";
-        if (tieneDatos(nube) && (!tieneDatos(local) || nubeTs >= localTs)) {
-          if (tieneDatos(local) && !window.confirm("Tu cuenta ya tiene datos guardados en la nube. Se cargarán en este dispositivo y reemplazarán lo que tienes aquí ahora.\n\nSi prefieres conservar lo de este dispositivo, cancela y exporta un respaldo primero.\n\n¿Cargar los datos de la nube?")) {
-            await subirNube(uid, local); setSync("sincronizado"); return;
-          }
-          const d = { ...VACIO, ...nube };
-          setData(d);
-          try { localStorage.setItem("brida-v1", JSON.stringify(d)); } catch {}
-        } else {
-          await subirNube(uid, local);
-        }
+        const L = local || {};
+        // Colecciones COMPARTIDAS del equipo: si la nube tiene datos, esas mandan (para ver lo de todos).
+        // Si la nube está vacía pero localmente sí hay, se conservan y se suben (evita perder datos no subidos).
+        const nubeTieneComp = ((nube.pipeline || []).length + (nube.clientes || []).length + (nube.cotizaciones || []).length + (nube.productos || []).length) > 0;
+        const fte = nubeTieneComp ? nube : L;
+        const comp = { pipeline: fte.pipeline || [], clientes: fte.clientes || [], contactos: fte.contactos || [], actividades: fte.actividades || [], productos: fte.productos || [], cotizaciones: fte.cotizaciones || [], descuentos: fte.descuentos || [] };
+        // Datos PRIVADOS (tareas, tiempo, metas, ajustes): la versión más reciente entre nube y local.
+        const priv = (tieneDatos(nube) && nubeTs >= localTs) ? nube : L;
+        const d = { ...VACIO, tareas: priv.tareas || [], tiempo: priv.tiempo || [], metas: priv.metas || VACIO.metas, mejoras: priv.mejoras || [], visitas: priv.visitas || [], timer: priv.timer || null, tipoCambio: priv.tipoCambio || 17, tipoCambioFecha: priv.tipoCambioFecha || "", ...comp };
+        setData(d);
+        try { localStorage.setItem("brida-v1", JSON.stringify(d)); } catch {}
+        const localCompSolo = ((L.pipeline || []).length + (L.cotizaciones || []).length) > 0;
+        if ((!nubeTieneComp && localCompSolo) || localTs > nubeTs) await subirNube(uid, d);
         setSync("sincronizado");
       } catch { setSync(navigator.onLine ? "error" : "offline"); }
     })();
@@ -2641,12 +2692,13 @@ export default function App() {
         const fila = await leerNube(s.user.id);
         const nube = fila && fila.data;
         if (nube) {
-          const nubeTs = nube.__actualizado || "", localTs = (dataRef.current && dataRef.current.__actualizado) || "";
-          if (nubeTs > localTs) {
-            const d = { ...VACIO, ...nube };
-            setData(d);
-            try { localStorage.setItem("brida-v1", JSON.stringify(d)); } catch {}
-          }
+          const cur = dataRef.current || {};
+          const nubeTs = nube.__actualizado || "", localTs = cur.__actualizado || "";
+          const nubeTieneComp = ((nube.pipeline || []).length + (nube.clientes || []).length + (nube.cotizaciones || []).length + (nube.productos || []).length) > 0;
+          let d = { ...cur };
+          if (nubeTieneComp) d = { ...d, pipeline: nube.pipeline || [], clientes: nube.clientes || [], contactos: nube.contactos || [], actividades: nube.actividades || [], productos: nube.productos || [], cotizaciones: nube.cotizaciones || [], descuentos: nube.descuentos || [] };
+          if (nubeTs > localTs) d = { ...d, tareas: nube.tareas || [], tiempo: nube.tiempo || [], metas: nube.metas || VACIO.metas, mejoras: nube.mejoras || [], visitas: nube.visitas || [], timer: nube.timer || null, tipoCambio: nube.tipoCambio, tipoCambioFecha: nube.tipoCambioFecha, __actualizado: nube.__actualizado };
+          if (nubeTieneComp || nubeTs > localTs) { setData(d); try { localStorage.setItem("brida-v1", JSON.stringify(d)); } catch {} }
           setSync("sincronizado");
         }
       } catch {}
@@ -2950,16 +3002,21 @@ export default function App() {
   const dotPipe = der.sinAccion.length ? C.ambar : C.azul;
   const maxDia = Math.max(60, ...der.semDias.map((d) => d.min));
 
-  const NAV = [
+  const NAV_CRM = [
     { id: "hoy", icon: ListTodo, label: "Hoy" },
-    { id: "tiempo", icon: Timer, label: "Tiempo" },
     { id: "pipeline", icon: Briefcase, label: "Pipeline" },
     { id: "clientes", icon: Building2, label: "Clientes" },
     { id: "cotiza", icon: FileText, label: "Cotiza" },
     { id: "metas", icon: Target, label: "Metas" },
-    { id: "cierre", icon: FileDown, label: "Cierre" },
     { id: "comisiones", icon: Percent, label: "Comis." },
   ];
+  const NAV_ERP = [
+    { id: "facturacion", icon: FileSpreadsheet, label: "Facturas" },
+    { id: "inventario", icon: Package, label: "Inventario" },
+    { id: "margenes", icon: BarChart3, label: "Márgenes" },
+  ];
+  const NAV = modo === "erp" ? NAV_ERP : NAV_CRM;
+  const cambiarModo = (m) => { setModo(m); setTab(m === "erp" ? "facturacion" : "hoy"); setExpand(null); };
 
   return (
     <div className="min-h-screen lg:pl-56" style={{ background: C.fondo, color: C.tinta }}>
@@ -2982,6 +3039,11 @@ export default function App() {
           </span>
         </button>
         <nav className="flex flex-col gap-1 flex-1">
+          <div className="flex gap-1 p-1 rounded-lg mb-2" style={{ background: C.bezel2 }}>
+            {[["crm", "CRM"], ["erp", "ERP"]].map(([m, lbl]) => (
+              <button key={m} onClick={() => cambiarModo(m)} className="flex-1 py-1.5 rounded-md text-xs font-bold uppercase" style={{ ...dsp, letterSpacing: "0.08em", background: modo === m ? C.ambar : "transparent", color: modo === m ? "#fff" : "#7C8DA0" }}>{lbl}</button>
+            ))}
+          </div>
           {NAV.map((n) => {
             const activo = tab === n.id;
             return (
@@ -3739,20 +3801,106 @@ export default function App() {
             </div>
           );
         })()}
+        {tab === "facturacion" && (() => {
+          const lineas = []; (data.pipeline || []).forEach((o) => (o.facturas || []).forEach((f) => lineas.push({ o, f })));
+          const sinR = lineas.filter(({ f }) => !f.reasignada);
+          const totalFact = lineas.reduce((s, { f }) => s + (Number(f.monto) || 0), 0);
+          const totalSinR = sinR.reduce((s, { f }) => s + (Number(f.monto) || 0), 0);
+          const sinFacturar = (data.pipeline || []).filter((o) => ["oc", "pedido", "facturado"].includes(o.etapa) && (o.facturas || []).length === 0);
+          return (
+            <div className="space-y-3">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>ERP · Facturación</div>
+              <div className="grid grid-cols-3 gap-2">
+                <KPI label="Facturas" v={lineas.length} sub={fMXN(totalFact)} col={C.azul} />
+                <KPI label="Sin reasignar" v={sinR.length} sub={fMXN(totalSinR)} col={sinR.length ? C.rojo : C.verde} bg={sinR.length ? C.rojoBg : "#fff"} />
+                <KPI label="Sin facturar" v={sinFacturar.length} sub="ganadas" col={sinFacturar.length ? C.ambar : C.verde} />
+              </div>
+              <button onClick={() => setReasigOpen(true)} className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileSpreadsheet size={16} /> Abrir control de facturación</button>
+              <div className="text-xs" style={{ color: C.dim }}>Registra pedidos y facturas dentro de cada oportunidad (sección «Facturación»). Aquí controlas lo facturado, lo que falta reasignar y exportas el Excel factura por factura.</div>
+            </div>
+          );
+        })()}
+        {tab === "inventario" && (() => {
+          const H = hoy();
+          const comp = []; (data.pipeline || []).forEach((o) => (o.compras || []).forEach((c) => comp.push({ o, c })));
+          const pend = comp.filter(({ c }) => c.estado !== "recibido");
+          const transito = comp.filter(({ c }) => c.estado === "transito");
+          const venc = pend.filter(({ c }) => c.entrega && c.entrega < H);
+          const proximas = pend.filter(({ c }) => c.entrega).sort((a, b) => a.c.entrega.localeCompare(b.c.entrega)).slice(0, 6);
+          return (
+            <div className="space-y-3">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>ERP · Inventario y entregas</div>
+              <div className="grid grid-cols-3 gap-2">
+                <KPI label="Por entregar" v={pend.length} col={C.azul} />
+                <KPI label="En tránsito" v={transito.length} col={C.azul} />
+                <KPI label="Vencidas" v={venc.length} col={venc.length ? C.rojo : C.verde} bg={venc.length ? C.rojoBg : "#fff"} />
+              </div>
+              {proximas.length ? (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold" style={{ color: C.dim }}>Próximas entregas</div>
+                  {proximas.map(({ o, c }) => { const dias = diasEntre(H, c.entrega); const vv = c.entrega < H; return (
+                    <div key={o.id + c.id} className="rounded-lg border px-3 py-2" style={{ borderColor: vv ? C.rojo : C.borde, background: vv ? C.rojoBg : "#fff" }}>
+                      <div className="text-sm font-semibold truncate">{c.proveedor || "Proveedor"} · {o.cliente}</div>
+                      <div className="text-[11px]" style={{ ...mono, color: vv ? "#8B2E2E" : C.dim }}>{c.entrega}{dias != null ? (dias < 0 ? ` (vencida ${-dias}d)` : dias === 0 ? " (hoy)" : ` (en ${dias}d)`) : ""}{c.numOC ? " · " + c.numOC : ""}</div>
+                    </div>
+                  ); })}
+                </div>
+              ) : null}
+              <button onClick={() => setComprasOpen(true)} className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><Package size={16} /> Abrir compras y entregas</button>
+              <div className="text-xs" style={{ color: C.dim }}>Registra las órdenes de compra a proveedor en cada oportunidad (sección «Compras a proveedor»). Aquí ves lo pedido, en tránsito y por llegar, con alerta de entregas vencidas.</div>
+            </div>
+          );
+        })()}
+        {tab === "margenes" && (() => {
+          const gan = (data.pipeline || []).filter((o) => o.etapa === "facturado");
+          const vT = gan.reduce((s, o) => s + (o.monto || 0), 0), cT = gan.reduce((s, o) => s + (o.costo || 0), 0);
+          const mT = vT - cT, pct = vT > 0 && cT > 0 ? Math.round(mT / vT * 100) : null;
+          const agrupa = (fn) => { const m = {}; gan.forEach((o) => { const k = fn(o) || "—"; if (!m[k]) m[k] = { v: 0, c: 0, n: 0 }; m[k].v += o.monto || 0; m[k].c += o.costo || 0; m[k].n++; }); return Object.entries(m).sort((a, b) => (b[1].v - b[1].c) - (a[1].v - a[1].c)); };
+          const Bloque = ({ titulo, filas }) => (
+            <div><div className="text-xs font-semibold mb-1" style={{ color: C.dim }}>{titulo}</div><div className="space-y-1">{filas.map(([k, x]) => { const mg = x.v - x.c, p = x.v > 0 && x.c > 0 ? Math.round(mg / x.v * 100) : null; return (
+              <div key={k} className="rounded-lg border px-3 py-2 flex items-center justify-between" style={{ borderColor: C.borde, background: "#fff" }}>
+                <span className="text-sm truncate">{k} <span style={{ color: C.dim }} className="text-xs">· {x.n}</span></span>
+                <span className="text-sm font-semibold shrink-0" style={{ ...mono, color: mg >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(mg)}{p != null ? ` · ${p}%` : ""}</span>
+              </div>
+            ); })}</div></div>
+          );
+          return (
+            <div className="space-y-3">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>ERP · Márgenes reales (facturado)</div>
+              <div className="grid grid-cols-3 gap-2">
+                <KPI label="Venta" v={fMXN(vT)} col={C.azul} />
+                <KPI label="Costo" v={fMXN(cT)} col={C.dim} />
+                <KPI label="Margen" v={fMXN(mT)} sub={pct != null ? pct + "%" : ""} col={mT >= 0 ? C.verde : C.rojo} bg={C.verdeBg} />
+              </div>
+              {gan.length === 0 ? <Vacio>Aún no hay ventas facturadas. Marca oportunidades como facturadas y captura su costo para ver el margen real.</Vacio> : (<>
+                <Bloque titulo="Por vendedor (A&C)" filas={agrupa((o) => (equipo.find((m) => m.id === (o.traidoPorId || o.vendedorId)) || {}).nombre)} />
+                <Bloque titulo="Por marca" filas={agrupa((o) => o.marca)} />
+              </>)}
+              <div className="text-xs" style={{ color: C.dim }}>El margen usa el costo que capturas en cada oportunidad («Margen real»). Costo neto sugerido = precio de lista × factor de la carátula.</div>
+            </div>
+          );
+        })()}
       </main>
 
       {/* ── Bisel inferior: navegación ── */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden" style={{ background: C.bezel, borderTop: `1px solid ${C.bezel2}` }}>
-        <div className="max-w-xl mx-auto flex">
-          {NAV.map((n) => {
-            const activo = tab === n.id;
-            return (
-              <button key={n.id} onClick={() => { setTab(n.id); setExpand(null); }} className="flex-1 py-2 flex flex-col items-center gap-0.5" style={{ borderTop: `2px solid ${activo ? C.ambar : "transparent"}` }}>
-                <n.icon size={17} style={{ color: activo ? C.ambar : "#7C8DA0" }} />
-                <span className="font-semibold uppercase" style={{ ...dsp, fontSize: 8, letterSpacing: "0.04em", color: activo ? "#fff" : "#7C8DA0" }}>{n.label}</span>
-              </button>
-            );
-          })}
+        <div className="max-w-xl mx-auto">
+          <div className="flex gap-1 px-2 pt-1.5 pb-0.5">
+            {[["crm", "CRM"], ["erp", "ERP"]].map(([m, lbl]) => (
+              <button key={m} onClick={() => cambiarModo(m)} className="flex-1 py-1 rounded-md text-xs font-bold uppercase" style={{ ...dsp, letterSpacing: "0.06em", background: modo === m ? C.ambar : C.bezel2, color: modo === m ? "#fff" : "#7C8DA0" }}>{lbl}</button>
+            ))}
+          </div>
+          <div className="flex">
+            {NAV.map((n) => {
+              const activo = tab === n.id;
+              return (
+                <button key={n.id} onClick={() => { setTab(n.id); setExpand(null); }} className="flex-1 py-2 flex flex-col items-center gap-0.5" style={{ borderTop: `2px solid ${activo ? C.ambar : "transparent"}` }}>
+                  <n.icon size={17} style={{ color: activo ? C.ambar : "#7C8DA0" }} />
+                  <span className="font-semibold uppercase" style={{ ...dsp, fontSize: 8, letterSpacing: "0.04em", color: activo ? "#fff" : "#7C8DA0" }}>{n.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </nav>
 

@@ -2389,7 +2389,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.1.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.2.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2785,6 +2785,21 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
+  const [selMode, setSelMode] = useState(false);
+  const [selIds, setSelIds] = useState(() => new Set());
+  const toggleSel = (id) => setSelIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const salirSel = () => { setSelMode(false); setSelIds(new Set()); };
+  const cambiarEtapaMasiva = (nuevaEtapa) => {
+    if (!nuevaEtapa || !selIds.size) return;
+    const ts = new Date().toISOString();
+    guardar({ ...data, pipeline: data.pipeline.map((o) => selIds.has(o.id) ? { ...o, etapa: nuevaEtapa, actualizada: ts, ...(nuevaEtapa === "cotizado" && !o.fechaCotizacion ? { fechaCotizacion: ts.slice(0, 10) } : {}) } : o) });
+    salirSel();
+  };
+  const eliminarMasivo = () => {
+    if (!selIds.size || !window.confirm(`¿Eliminar ${selIds.size} oportunidad(es)? Se archivan y son recuperables.`)) return;
+    guardar({ ...data, pipeline: data.pipeline.filter((o) => !selIds.has(o.id)) });
+    salirSel();
+  };
   const importarOpps = (lista) => {
     const t = new Date().toISOString();
     const nuevas = lista.map((o) => ({ ...o, id: uid(), creada: t, actualizada: t }));
@@ -3404,6 +3419,10 @@ export default function App() {
               ))}
             </div>
 
+            <button onClick={() => selMode ? salirSel() : setSelMode(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: selMode ? C.ambar : C.borde, background: selMode ? C.ambarBg : "#fff", color: selMode ? "#8A5A00" : C.tinta }}>
+              <ListTodo size={15} /> {selMode ? "Salir de selección" : "Seleccionar varias"}
+            </button>
+
             <button onClick={() => setVerComision(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>
               <Percent size={15} /> Calcular comisiones
             </button>
@@ -3420,9 +3439,10 @@ export default function App() {
                 const e = etapa(o.etapa);
                 const venc = o.fechaAccion && o.fechaAccion < der.H && ACTIVAS.includes(o.etapa);
                 return (
-                  <div key={o.id} className="rounded-xl border p-3" style={{ borderColor: venc ? C.rojo : C.borde, background: C.panel }}>
-                    <button className="w-full text-left" onClick={() => setOppEdit(o)}>
+                  <div key={o.id} className="rounded-xl border p-3" style={{ borderColor: selMode && selIds.has(o.id) ? C.ambar : (venc ? C.rojo : C.borde), background: selMode && selIds.has(o.id) ? C.ambarBg : C.panel }}>
+                    <button className="w-full text-left" onClick={() => selMode ? toggleSel(o.id) : setOppEdit(o)}>
                       <div className="flex items-start justify-between gap-2">
+                        {selMode ? <span className="w-5 h-5 rounded border flex items-center justify-center shrink-0 mt-0.5" style={{ borderColor: selIds.has(o.id) ? C.ambar : C.borde, background: selIds.has(o.id) ? C.ambar : "#fff" }}>{selIds.has(o.id) ? <Check size={13} style={{ color: "#fff" }} /> : null}</span> : null}
                         <div className="min-w-0">
                           <div className="text-sm font-semibold truncate">{o.cliente}</div>
                           {o.titulo && <div className="text-xs truncate" style={{ color: C.dim }}>{o.titulo}</div>}
@@ -3881,6 +3901,26 @@ export default function App() {
           );
         })()}
       </main>
+
+      {selMode && tab === "pipeline" && (
+        <div className="fixed bottom-0 left-0 right-0 z-50" style={{ background: C.bezel, borderTop: `2px solid ${C.ambar}` }}>
+          <div className="max-w-xl lg:max-w-3xl mx-auto px-3 py-2.5 lg:pl-56">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-sm font-semibold" style={{ color: "#fff" }}>{selIds.size} seleccionada{selIds.size === 1 ? "" : "s"}</span>
+              <button onClick={() => setSelIds(new Set(oppsFiltradas.map((o) => o.id)))} className="text-xs font-semibold" style={{ color: C.ambar }}>Todas ({oppsFiltradas.length})</button>
+              {selIds.size > 0 ? <button onClick={() => setSelIds(new Set())} className="text-xs" style={{ color: "#8FA0B3" }}>Ninguna</button> : null}
+              <button onClick={salirSel} className="ml-auto text-xs" style={{ color: "#8FA0B3" }}>Cancelar</button>
+            </div>
+            <div className="flex gap-2">
+              <select onChange={(e) => { cambiarEtapaMasiva(e.target.value); e.target.value = ""; }} disabled={!selIds.size} defaultValue="" className="flex-1 rounded-lg px-2 py-2 text-sm" style={{ ...inp, opacity: selIds.size ? 1 : 0.5 }}>
+                <option value="">Cambiar etapa a…</option>
+                {ETAPAS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+              </select>
+              <button onClick={eliminarMasivo} disabled={!selIds.size} className="px-4 rounded-lg text-sm font-semibold flex items-center gap-1.5" style={{ background: selIds.size ? C.rojo : C.borde, color: "#fff" }}><Trash2 size={15} /> Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Bisel inferior: navegación ── */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden" style={{ background: C.bezel, borderTop: `1px solid ${C.bezel2}` }}>

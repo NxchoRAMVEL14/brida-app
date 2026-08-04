@@ -8,7 +8,7 @@ import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subi
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
-import { leerXLSX, mapearMonday, mapearCaratula, mapearListaPrecios } from "./importar.jsx";
+import { leerXLSX, mapearMonday, mapearCaratula, mapearListaPrecios, mapearClientes } from "./importar.jsx";
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
@@ -904,7 +904,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
     fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
-    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", costo: opp.costo ?? "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", numCliente: opp.numCliente || "", costo: opp.costo ?? "",
   });
   const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
   const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false }]);
@@ -924,14 +924,15 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
         </div>
         <div className="p-4 space-y-3 pb-8">
           <div>
-            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Cliente * (nombre o número)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
             {d.cliente.trim() && !d.clienteId ? (() => {
-              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(d.cliente.trim().toLowerCase())).slice(0, 5);
+              const q = d.cliente.trim().toLowerCase();
+              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(q) || (c.numCliente || "").toLowerCase().includes(q)).slice(0, 6);
               return ms.length ? (
                 <div className="mt-1 space-y-1">
                   {ms.map((c) => (
-                    <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}>
-                      <Building2 size={12} style={{ color: C.azul }} /> Vincular a: {c.nombre}
+                    <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id, numCliente: c.numCliente || d.numCliente })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}>
+                      <Building2 size={12} style={{ color: C.azul }} /> {c.nombre}{c.numCliente ? ` · #${c.numCliente}` : ""}
                     </button>
                   ))}
                 </div>
@@ -943,6 +944,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
                 <button onClick={() => setD({ ...d, clienteId: "" })} className="underline" style={{ color: C.dim }}>desvincular</button>
               </div>
             ) : null}
+            <input value={d.numCliente} onChange={(e) => setD({ ...d, numCliente: e.target.value })} placeholder="Número de cliente" className="w-full rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
           </div>
           <input value={d.titulo} onChange={(e) => setD({ ...d, titulo: e.target.value })} placeholder="Proyecto o descripción" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           {d.cliente.trim() ? (() => {
@@ -1194,6 +1196,7 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
     nombre: cliente.nombre || "", tipo: cliente.tipo || "", estado: cliente.estado || "prospecto",
     plaza: cliente.plaza || "", giro: cliente.giro || "", rfc: cliente.rfc || "",
     direccion: cliente.direccion || "", notas: cliente.notas || "", clave: !!cliente.clave, alliance: !!cliente.alliance,
+    numCliente: cliente.numCliente || "",
   });
   const [cts, setCts] = useState(() => (contactos || []).filter((c) => c.clienteId === cliente.id).map((c) => ({ ...c })));
   const [acts, setActs] = useState(() => (actividades || []).filter((a) => a.clienteId === cliente.id).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((a) => ({ ...a })));
@@ -1211,6 +1214,7 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
         </div>
         <div className="p-4 space-y-3 pb-8">
           <input value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} placeholder="Nombre / razón social *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <input value={d.numCliente} onChange={(e) => setD({ ...d, numCliente: e.target.value })} placeholder="Número de cliente (sistema Elektron)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
           <div>
             <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Tipo</div>
             <div className="flex flex-wrap gap-1.5">
@@ -2233,6 +2237,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.3.0 — Importar clientes desde Excel (No., Cliente, Segmento, Ciudad, Entidad) con dedupe automático, y número de cliente en toda la app: en clientes y oportunidades ahora puedes buscar por número (del sistema Elektron), no solo por razón social. Al elegir cliente en una oportunidad se autollena su número.",
     "v5.0.0 — Brida ahora es ERP + CRM. Fase 2: costo y margen real por trato (venta − costo), con márgenes por marca en Análisis. Fase 3: compras a proveedores — registra las OC a Schneider/Siemens con tiempos de entrega, y un tablero «Compras y entregas» con pendientes, en tránsito y entregas atrasadas.",
     "v4.9.0 — Pedidos y facturas multi-línea (Fase 1 del ERP): cada oportunidad puede tener varios pedidos y varias facturas (# pedido, # factura, fecha, monto sin IVA, facturista, estado y marca de reasignada). Nuevo tablero «Control de facturación» con facturas sin reasignar, sin facturar y total facturado; la reasignación ahora exporta UNA fila por factura, así ninguna se escapa.",
     "v4.8.0 — Listas de precios por marca: al importar indicas la marca y la versión (ej. Schneider · 06 Abr 2026); re-subir actualiza precios. El catálogo muestra las listas cargadas por marca. La carátula queda guardada para todo el equipo (solo la re-subes para actualizar). En la lista de clientes, el fondo de la tarjeta cambia de color según su clasificación (clave, recurrente, pide y no cierra).",
@@ -2389,7 +2394,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.2.1 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.3.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2554,6 +2559,17 @@ export default function App() {
   const [oppEdit, setOppEdit] = useState(null);
   const [cliEdit, setCliEdit] = useState(null);
   const [buscarCli, setBuscarCli] = useState("");
+  const [msgCli, setMsgCli] = useState("");
+  const importarArchivoClientes = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    setMsgCli("Leyendo archivo…");
+    try {
+      const r = mapearClientes(leerXLSX(await f.arrayBuffer()), data.clientes || []);
+      if (r.error) { setMsgCli(r.error); return; }
+      importarClientes([...r.nuevos, ...r.repetidos]);
+      setMsgCli(`Listo: ${r.nuevos.length} clientes nuevos${r.repetidos.length ? `, ${r.repetidos.length} actualizados` : ""}.`);
+    } catch (e) { setMsgCli("No pude leer el archivo. Revisa que tenga columnas No. y Cliente."); }
+  };
   const [cotEdit, setCotEdit] = useState(null);
   const [catOpen, setCatOpen] = useState(false);
   const [analisisOpen, setAnalisisOpen] = useState(false);
@@ -2828,6 +2844,23 @@ export default function App() {
     guardar({ ...data, clientes: (data.clientes || []).filter((c) => c.id !== id), contactos: (data.contactos || []).filter((ct) => ct.clienteId !== id), actividades: (data.actividades || []).filter((a) => a.clienteId !== id) });
     setCliEdit(null);
   };
+  const importarClientes = (lista) => {
+    const ts = new Date().toISOString();
+    const norm = (s) => (s || "").trim().toLowerCase();
+    const porNum = {}, porNom = {};
+    (data.clientes || []).forEach((c) => { if (c.numCliente) porNum[norm(c.numCliente)] = c; porNom[norm(c.nombre)] = c; });
+    const clientes = [...(data.clientes || [])];
+    const contactosNuevos = [];
+    lista.forEach((c) => {
+      const contacto = c._contacto; delete c._contacto;
+      const ex = (c.numCliente && porNum[norm(c.numCliente)]) || porNom[norm(c.nombre)];
+      let cid;
+      if (ex) { cid = ex.id; const i = clientes.findIndex((x) => x.id === ex.id); if (i >= 0) clientes[i] = { ...clientes[i], ...c, actualizada: ts }; }
+      else { cid = uid(); const nc = { ...c, id: cid, creada: ts, actualizada: ts }; clientes.unshift(nc); porNum[norm(c.numCliente)] = nc; porNom[norm(c.nombre)] = nc; }
+      if (contacto && contacto.nombre) contactosNuevos.push({ ...contacto, id: uid(), clienteId: cid });
+    });
+    guardar({ ...data, clientes, contactos: [...(data.contactos || []), ...contactosNuevos] });
+  };
   const guardarProducto = (p) => {
     const id = p.id || uid();
     const productos = p.id
@@ -3006,7 +3039,7 @@ export default function App() {
   const oppsFiltradas = data.pipeline
     .filter((o) => vista === "todas" ? true : vista === "mias" ? ((o.traidoPorId || o.vendedorId) === miId) : (o.cotizadorId === miId))
     .filter((o) => filtroE === "todas" ? true : o.etapa === filtroE)
-    .filter((o) => { const q = busca.trim().toLowerCase(); return !q || [o.cliente, o.titulo, o.marca, o.plaza, o.vendedor, o.numCotizacion, o.ocCliente, o.numPedido, o.numFactura].some((v) => (v || "").toLowerCase().includes(q)); })
+    .filter((o) => { const q = busca.trim().toLowerCase(); return !q || [o.cliente, o.numCliente, o.titulo, o.marca, o.plaza, o.vendedor, o.numCotizacion, o.ocCliente, o.numPedido, o.numFactura].some((v) => (v || "").toLowerCase().includes(q)); })
     .sort((a, b) => {
       const ia = ETAPAS.findIndex((e) => e.id === a.etapa), ib = ETAPAS.findIndex((e) => e.id === b.etapa);
       if (ia !== ib) return ia - ib;
@@ -3444,7 +3477,7 @@ export default function App() {
                       <div className="flex items-start justify-between gap-2">
                         {selMode ? <span className="w-5 h-5 rounded border flex items-center justify-center shrink-0 mt-0.5" style={{ borderColor: selIds.has(o.id) ? C.ambar : C.borde, background: selIds.has(o.id) ? C.ambar : "#fff" }}>{selIds.has(o.id) ? <Check size={13} style={{ color: "#fff" }} /> : null}</span> : null}
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold truncate">{o.cliente}</div>
+                          <div className="text-sm font-semibold truncate">{o.cliente}{o.numCliente ? <span className="font-normal" style={{ ...mono, color: C.dim, fontSize: 11 }}> · #{o.numCliente}</span> : null}</div>
                           {o.titulo && <div className="text-xs truncate" style={{ color: C.dim }}>{o.titulo}</div>}
                           {(() => {
                             const tra = (equipo.find((m) => m.id === (o.traidoPorId || o.vendedorId)) || {}).nombre;
@@ -3504,19 +3537,26 @@ export default function App() {
             <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Clientes ({(data.clientes || []).length})</div>
-                <button onClick={() => setCliEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
-                  <Plus size={16} /> Nuevo
-                </button>
+                <div className="flex gap-1.5">
+                  <label className="px-3 py-2 rounded-xl border font-semibold flex items-center gap-1.5 text-sm" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+                    <FileUp size={15} style={{ color: C.ambar }} /> Importar
+                    <input type="file" accept=".xlsx" onChange={importarArchivoClientes} className="hidden" />
+                  </label>
+                  <button onClick={() => setCliEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
+                    <Plus size={16} /> Nuevo
+                  </button>
+                </div>
               </div>
+              {msgCli ? <div className="rounded-lg border px-3 py-2 text-xs mb-2" style={{ borderColor: C.borde, background: C.panel, color: C.tinta }}>{msgCli}</div> : null}
               <div className="relative mb-2">
                 <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
-                <input value={buscarCli} onChange={(e) => setBuscarCli(e.target.value)} placeholder="Buscar cliente…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
+                <input value={buscarCli} onChange={(e) => setBuscarCli(e.target.value)} placeholder="Buscar por nombre o número de cliente…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
               </div>
               {(data.clientes || []).length === 0 ? (
-                <div className="text-sm text-center py-6" style={{ color: C.dim }}>Aún no tienes clientes. Toca «Nuevo» para crear tu primera cuenta.</div>
+                <div className="text-sm text-center py-6" style={{ color: C.dim }}>Aún no tienes clientes. Toca «Nuevo», o «Importar» para cargarlos desde Excel.</div>
               ) : (
                 <div className="space-y-1.5">
-                  {(data.clientes || []).filter((c) => !buscarCli || (c.nombre || "").toLowerCase().includes(buscarCli.toLowerCase())).map((c) => {
+                  {(data.clientes || []).filter((c) => { const q = buscarCli.trim().toLowerCase(); return !q || `${c.nombre} ${c.numCliente || ""}`.toLowerCase().includes(q); }).slice(0, 300).map((c) => {
                     const est = ESTADOS_CLIENTE.find((s) => s.id === c.estado) || ESTADOS_CLIENTE[0];
                     const nCt = (data.contactos || []).filter((ct) => ct.clienteId === c.id).length;
                     const tipoLb = (TIPOS_CLIENTE.find((t) => t.id === c.tipo) || {}).label || "";
@@ -3526,7 +3566,7 @@ export default function App() {
                         <Building2 size={18} style={{ color: est.color }} />
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.nombre}</div>
-                          <div className="text-xs truncate" style={{ color: C.dim }}>{[tipoLb, c.plaza, nCt ? `${nCt} contacto${nCt > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") || "Sin datos adicionales"}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[c.numCliente ? "#" + c.numCliente : "", tipoLb, c.plaza, nCt ? `${nCt} contacto${nCt > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") || "Sin datos adicionales"}</div>
                         </div>
                         {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: cfg.color, background: cfg.bg }}>{cfg.label}</span> : <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: est.color, background: est.color + "22" }}>{est.label}</span>}
                         <ChevronRight size={16} style={{ color: C.dim }} />

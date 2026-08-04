@@ -164,3 +164,62 @@ export function mapearListaPrecios(hojas, existentes) {
   }
   return (nuevos.length || repetidos.length) ? { nuevos, repetidos } : { error: "No encontré productos con datos en el archivo." };
 }
+
+// ── Importar clientes (No., Cliente, Segmento, Ciudad, Entidad) ──────
+const SEG_TIPO = [
+  ["gobierno", "gobierno"], ["comerciante", "comerciante"], ["reventa", "comerciante"],
+  ["contrat. industrial", "contratista_industrial"], ["contratista industrial", "contratista_industrial"],
+  ["contratista electric", "contratista_electrico"], ["contratista electrico", "contratista_electrico"],
+  ["constructor", "constructor"], ["arquitecto", "arquitecto"], ["integrador", "integrador"],
+  ["fabricante de equipo", "oem"], ["oem", "oem"], ["empresa de servicios", "servicios"], ["servicios", "servicios"],
+  ["electricista", "electricista"], ["ferretero", "ferretero"], ["redes", "redes"],
+  ["publico", "publico"], ["industria", "industria"],
+];
+function tipoDeSegmento(seg) {
+  const s = normc(seg);
+  if (!s) return "";
+  for (const [k, id] of SEG_TIPO) if (s.includes(k)) return id;
+  return "";
+}
+export function mapearClientes(hojas, existentes) {
+  let filas = null, hi = -1;
+  for (const h of hojas) {
+    const i = h.findIndex((r) => r && r.some((c) => normc(c) === "cliente" || normc(c).includes("cliente") || normc(c).includes("razon social")) && r.some((c) => /^no\.?$|numero|n[uú]m|clave/.test(normc(c))));
+    if (i >= 0) { filas = h; hi = i; break; }
+  }
+  if (!filas) return { error: "No encontré los encabezados (No. y Cliente). Revisa el archivo." };
+  const enc = filas[hi].map(normc);
+  const col = (nombres) => enc.findIndex((c) => nombres.some((n) => c.includes(n)));
+  const iNum = enc.findIndex((c) => /^no\.?$|numero de cliente|num. cliente|numero|clave de cliente/.test(c));
+  const iNom = col(["cliente", "razon social", "razón social", "nombre del cliente"]);
+  const iSeg = col(["segmento", "giro", "sector"]);
+  const iCiudad = enc.findIndex((c) => c === "ciudad" || (c.includes("ciudad") && !c.includes("vendedor")));
+  const iEnt = col(["entidad", "estado"]);
+  const iContacto = col(["contacto", "atencion", "atención"]);
+  const iCorreo = col(["correo", "email", "e-mail"]);
+  const iTel = col(["telefono", "teléfono", "celular", "tel"]);
+  const existeNum = new Set((existentes || []).map((c) => normc(c.numCliente)).filter(Boolean));
+  const existeNom = new Set((existentes || []).map((c) => normc(c.nombre)).filter(Boolean));
+  const vistos = new Set();
+  const nuevos = [], repetidos = [];
+  for (let r = hi + 1; r < filas.length; r++) {
+    const row = filas[r]; if (!row) continue;
+    const numCliente = String(row[iNum] != null ? row[iNum] : "").trim();
+    const nombre = iNom >= 0 ? String(row[iNom] || "").trim() : "";
+    if (!nombre && !numCliente) continue;
+    const clave = normc(numCliente) || normc(nombre);
+    if (vistos.has(clave)) continue;   // quita duplicados dentro del archivo
+    vistos.add(clave);
+    const cli = {
+      numCliente, nombre: nombre || numCliente,
+      tipo: iSeg >= 0 ? tipoDeSegmento(row[iSeg]) : "",
+      plaza: iCiudad >= 0 ? String(row[iCiudad] || "").trim() : "",
+      estado: iEnt >= 0 ? String(row[iEnt] || "").trim() : "",
+    };
+    if (iContacto >= 0 && String(row[iContacto] || "").trim()) {
+      cli._contacto = { nombre: String(row[iContacto] || "").trim(), correo: iCorreo >= 0 ? String(row[iCorreo] || "").trim() : "", telefono: iTel >= 0 ? String(row[iTel] || "").trim() : "" };
+    }
+    ((numCliente && existeNum.has(normc(numCliente))) || existeNom.has(normc(nombre)) ? repetidos : nuevos).push(cli);
+  }
+  return (nuevos.length || repetidos.length) ? { nuevos, repetidos } : { error: "No encontré clientes con datos en el archivo." };
+}

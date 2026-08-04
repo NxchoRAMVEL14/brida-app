@@ -2389,7 +2389,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.2.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.2.1 · Brida</div>
         </div>
       </div>
     </div>
@@ -2603,6 +2603,8 @@ export default function App() {
   const [gerenteOpen, setGerenteOpen] = useState(false);
   const [reasigOpen, setReasigOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
+  const [selMode, setSelMode] = useState(false);
+  const [selIds, setSelIds] = useState(() => new Set());
   const [sync, setSync] = useState("local");
   const dataRef = useRef(null);
   const sesionRef = useRef(null);
@@ -2785,8 +2787,6 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
-  const [selMode, setSelMode] = useState(false);
-  const [selIds, setSelIds] = useState(() => new Set());
   const toggleSel = (id) => setSelIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const salirSel = () => { setSelMode(false); setSelIds(new Set()); };
   const cambiarEtapaMasiva = (nuevaEtapa) => {

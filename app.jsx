@@ -2237,6 +2237,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.6.0 — Selección múltiple en clientes: elige varios y elimínalos en lote (con sus contactos). Y se corrigió la duplicación de contactos al importar: ahora reconoce los que ya existen (por cliente y nombre) y limpia los duplicados anteriores en la siguiente importación.",
     "v5.5.0 — Se corrigió el límite de 1000: ahora la app trae TODOS los registros de la nube (paginando), así ves tus miles de clientes completos. Además, en la lista de clientes puedes ordenar por nombre (A→Z / Z→A) o por número de cliente (ascendente / descendente).",
     "v5.4.0 — Reportes financieros (Fase 5, en modo ERP): tablero con del embudo a la caja (cotizado→ganado→facturado→margen y % de conversión), facturado por mes (12 meses), ranking por vendedor y por marca, y comisiones. Con botón para exportar todo el reporte a Excel. Se alimenta solo de lo que ya capturas.",
     "v5.3.0 — Importar clientes desde Excel (No., Cliente, Segmento, Ciudad, Entidad) con dedupe automático, y número de cliente en toda la app: en clientes y oportunidades ahora puedes buscar por número (del sistema Elektron), no solo por razón social. Al elegir cliente en una oportunidad se autollena su número.",
@@ -2396,7 +2397,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.5.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.6.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2563,6 +2564,15 @@ export default function App() {
   const [buscarCli, setBuscarCli] = useState("");
   const [msgCli, setMsgCli] = useState("");
   const [ordenCli, setOrdenCli] = useState("nombre");
+  const [selCliMode, setSelCliMode] = useState(false);
+  const [selCliIds, setSelCliIds] = useState(() => new Set());
+  const toggleSelCli = (id) => setSelCliIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const salirSelCli = () => { setSelCliMode(false); setSelCliIds(new Set()); };
+  const eliminarClientesMasivo = () => {
+    if (!selCliIds.size || !window.confirm(`¿Eliminar ${selCliIds.size} cliente(s) y sus contactos de la nube?`)) return;
+    guardar({ ...data, clientes: (data.clientes || []).filter((c) => !selCliIds.has(c.id)), contactos: (data.contactos || []).filter((ct) => !selCliIds.has(ct.clienteId)), actividades: (data.actividades || []).filter((a) => !selCliIds.has(a.clienteId)) });
+    salirSelCli();
+  };
   const importarArchivoClientes = async (ev) => {
     const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
     setMsgCli("Leyendo archivo…");
@@ -2853,17 +2863,21 @@ export default function App() {
     const porNum = {}, porNom = {};
     (data.clientes || []).forEach((c) => { if (c.numCliente) porNum[norm(c.numCliente)] = c; porNom[norm(c.nombre)] = c; });
     const clientes = [...(data.clientes || [])];
-    const contactosNuevos = [];
+    const contactos = [...(data.contactos || [])];
+    const contKey = (ct) => `${ct.clienteId}::${norm(ct.nombre)}`;
+    const contIdx = new Set(contactos.map(contKey));
     lista.forEach((c) => {
       const contacto = c._contacto; delete c._contacto;
       const ex = (c.numCliente && porNum[norm(c.numCliente)]) || porNom[norm(c.nombre)];
       let cid;
       if (ex) { cid = ex.id; const i = clientes.findIndex((x) => x.id === ex.id); if (i >= 0) clientes[i] = { ...clientes[i], ...c, actualizada: ts }; }
       else { cid = uid(); const nc = { ...c, id: cid, creada: ts, actualizada: ts }; clientes.unshift(nc); porNum[norm(c.numCliente)] = nc; porNom[norm(c.nombre)] = nc; }
-      if (contacto && contacto.nombre) contactosNuevos.push({ ...contacto, id: uid(), clienteId: cid });
+      if (contacto && contacto.nombre) { const k = `${cid}::${norm(contacto.nombre)}`; if (!contIdx.has(k)) { contactos.push({ ...contacto, id: uid(), clienteId: cid }); contIdx.add(k); } }
     });
-    const dedupe = (arr) => { const m = new Map(); arr.forEach((x) => { if (x && x.id) m.set(x.id, x); }); return [...m.values()]; };
-    guardar({ ...data, clientes: dedupe(clientes), contactos: dedupe([...(data.contactos || []), ...contactosNuevos]) });
+    // Dedupe: clientes por id; contactos por (cliente + nombre) para limpiar los duplicados viejos
+    const porId = new Map(); clientes.forEach((x) => { if (x && x.id) porId.set(x.id, x); });
+    const cKey = new Map(); contactos.forEach((ct) => { if (ct && ct.id) { const k = contKey(ct); if (!cKey.has(k)) cKey.set(k, ct); } });
+    guardar({ ...data, clientes: [...porId.values()], contactos: [...cKey.values()] });
   };
   const guardarProducto = (p) => {
     const id = p.id || uid();
@@ -3562,6 +3576,9 @@ export default function App() {
                   <button key={o} onClick={() => setOrdenCli(o)} className="flex-1 py-1.5 rounded-md text-xs font-semibold" style={{ background: ordenCli === o ? "#fff" : "transparent", color: ordenCli === o ? C.tinta : C.dim, border: ordenCli === o ? `1px solid ${C.borde}` : "1px solid transparent" }}>{lbl}</button>
                 ))}
               </div>
+              <button onClick={() => selCliMode ? salirSelCli() : setSelCliMode(true)} className="w-full mb-2 py-2 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: selCliMode ? C.ambar : C.borde, background: selCliMode ? C.ambarBg : "#fff", color: selCliMode ? "#8A5A00" : C.tinta }}>
+                <ListTodo size={15} /> {selCliMode ? "Salir de selección" : "Seleccionar varias"}
+              </button>
               {(data.clientes || []).length === 0 ? (
                 <div className="text-sm text-center py-6" style={{ color: C.dim }}>Aún no tienes clientes. Toca «Nuevo», o «Importar» para cargarlos desde Excel.</div>
               ) : (() => {
@@ -3584,8 +3601,8 @@ export default function App() {
                     const tipoLb = (TIPOS_CLIENTE.find((t) => t.id === c.tipo) || {}).label || "";
                     const cfg = CLASE_CLIENTE[clasificarCliente(c.nombre, data.pipeline, data.clientes).tipo];
                     return (
-                      <button key={c.id} onClick={() => setCliEdit(c)} className="w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3" style={{ borderColor: cfg ? cfg.borde : C.borde, background: cfg ? cfg.fondo : "#fff" }}>
-                        <Building2 size={18} style={{ color: est.color }} />
+                      <button key={c.id} onClick={() => selCliMode ? toggleSelCli(c.id) : setCliEdit(c)} className="w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3" style={{ borderColor: selCliMode && selCliIds.has(c.id) ? C.ambar : (cfg ? cfg.borde : C.borde), background: selCliMode && selCliIds.has(c.id) ? C.ambarBg : (cfg ? cfg.fondo : "#fff") }}>
+                        {selCliMode ? <span className="w-5 h-5 rounded border flex items-center justify-center shrink-0" style={{ borderColor: selCliIds.has(c.id) ? C.ambar : C.borde, background: selCliIds.has(c.id) ? C.ambar : "#fff" }}>{selCliIds.has(c.id) ? <Check size={13} style={{ color: "#fff" }} /> : null}</span> : <Building2 size={18} style={{ color: est.color }} />}
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.nombre}</div>
                           <div className="text-xs truncate" style={{ color: C.dim }}>{[c.numCliente ? "#" + c.numCliente : "", tipoLb, c.plaza, nCt ? `${nCt} contacto${nCt > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") || "Sin datos adicionales"}</div>
@@ -4046,6 +4063,17 @@ export default function App() {
           );
         })()}
       </main>
+
+      {selCliMode && tab === "clientes" && (
+        <div className="fixed bottom-0 left-0 right-0 z-50" style={{ background: C.bezel, borderTop: `2px solid ${C.ambar}` }}>
+          <div className="max-w-xl lg:max-w-3xl mx-auto px-3 py-2.5 lg:pl-56 flex items-center gap-3">
+            <span className="text-sm font-semibold" style={{ color: "#fff" }}>{selCliIds.size} seleccionado{selCliIds.size === 1 ? "" : "s"}</span>
+            <button onClick={() => { const q = buscarCli.trim().toLowerCase(); setSelCliIds(new Set((data.clientes || []).filter((c) => !q || `${c.nombre} ${c.numCliente || ""}`.toLowerCase().includes(q)).map((c) => c.id))); }} className="text-xs font-semibold" style={{ color: C.ambar }}>Todas</button>
+            <button onClick={salirSelCli} className="text-xs" style={{ color: "#8FA0B3" }}>Cancelar</button>
+            <button onClick={eliminarClientesMasivo} disabled={!selCliIds.size} className="ml-auto px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5" style={{ background: selCliIds.size ? C.rojo : C.borde, color: "#fff" }}><Trash2 size={15} /> Eliminar</button>
+          </div>
+        </div>
+      )}
 
       {selMode && tab === "pipeline" && (
         <div className="fixed bottom-0 left-0 right-0 z-50" style={{ background: C.bezel, borderTop: `2px solid ${C.ambar}` }}>

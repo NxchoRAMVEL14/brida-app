@@ -94,6 +94,7 @@ const RESULTADOS = [
   { id: "reagendar", label: "Reagendar", color: "#7C5FB8" },
 ];
 const resultadoDe = (id) => RESULTADOS.find((r) => r.id === id) || RESULTADOS[0];
+const SUCURSALES = ["1 - Hidalgo CDR", "2 - Torres Landa PTE.", "3 - Torres Landa OTE.", "4 - CDR León", "5 - Querétaro Constituyentes", "6 - Querétaro El Marqués", "7 - Querétaro CDR 5 Febrero", "8 - Aguascalientes", "9 - Guadalajara anterior", "10 - San Luis Potosí", "11 - Celaya", "12 - Saltillo", "13 - Tlalnepantla", "14 - Irapuato", "15 - Irapuato 2", "16 - Culiacán", "17 - Iztapalapa", "18 - Silao", "19 - E-Commerce", "20 - Guadalajara", "21 - Sureste", "22 - Monterrey CDR", "23 - Monterrey Madero", "24 - Pachuca", "25 - Mérida", "26 - Vallarta", "27 - ML Full", "28 - Amazon", "29 - San Miguél de Allende", "30 - Consolidado anterior", "31 - Lagos", "32 - Victoria (CDMX)", "33 - Claro Shop", "34 - Cuernavaca", "35 - Veracruz", "36 - León Valtierra", "37 - Monterrey Miguél Alemán", "38 - Puebla", "39 - CDR Tlalnepantla", "40 - EXH SAN LUIS POTOSÍ", "41 - EXH IRAPUATO", "42 - EXH SALTILLO", "43 - Elektron ferreterias", "44 - EXH HIDALGO", "46 - EXH TORRES LANDA OTE.", "47 - EXH FERRETERÍA LEÓN", "48 - EXH QRO. CONSTITUYENTES", "49 - EXH QRO. UNIVERSIDAD", "50 - EN DISTRIBUCIÓN", "51 - CONSOLIDADO IRAPUATO", "52 - CONSOLIDADO LEÓN", "53 - CONSOLIDADO METRO", "54 - CONSOLIDADO NORTE", "60 - CONSOLIDADO GENERAL", "61 - Taller de armado León", "62 - Taller de armado México", "63 - Taller de armado Mty", "65 - Disponible", "70 - Donativo Teleton", "71 - GARANTIA PROVEEDOR", "72 - DEVOLUCIONES A PROVEEDOR", "73 - TRAMOS CABLES", "74 - MATERIAL A DESTRUIR", "75 - GARANTIA TRUPER", "76 - MATERIAL DAÑADO", "77 - Nuevos Mercados León", "78 - Nuevos Mercados México", "81 - EXCENDENTES CDR LEÓN", "82 - BACHOCO", "83 - AUTOBUSES LA PIEDAD", "84 - DES. INT DE INGENIERÍA", "85 - ASEGURADORA", "86 - CORPORATIVO", "88 - Dropshipping León", "89 - Dropshipping México", "90 - Centro de cortes", "91 - CEDIS LEÓN", "92 - CEDIS LEÓN 2", "93 - CEDIS METRO", "95 - TOVAR Y VENEGAS", "96 - INGENIERÍA", "97 - PROVEEDORES", "98 - PROCESO INTEGRACIÓN", "99 - CLIENTES"];
 const TIPOS_CLIENTE = [
   { id: "comerciante", label: "Comerciante / Reventa" },
   { id: "contratista_electrico", label: "Contratista eléctrico" },
@@ -904,7 +905,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
     fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
-    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", numCliente: opp.numCliente || "", costo: opp.costo ?? "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", numCliente: opp.numCliente || "", sucursal: opp.sucursal || "", costo: opp.costo ?? "",
   });
   const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
   const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false, fechaPago: "" }]);
@@ -946,6 +947,10 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
             ) : null}
             <input value={d.numCliente} onChange={(e) => setD({ ...d, numCliente: e.target.value })} placeholder="Número de cliente" className="w-full rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
           </div>
+          <select value={d.sucursal} onChange={(e) => setD({ ...d, sucursal: e.target.value })} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp}>
+            <option value="">Sucursal…</option>
+            {SUCURSALES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
           <input value={d.titulo} onChange={(e) => setD({ ...d, titulo: e.target.value })} placeholder="Proyecto o descripción" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           {d.cliente.trim() ? (() => {
             const cl = clasificarCliente(d.cliente, pipeline, clientes);
@@ -2243,6 +2248,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.8.0 — Selector de sucursal en las oportunidades: elige la sucursal (número + nombre) de una lista con las 84 sucursales, en vez de escribirla a mano. Queda lista para cotizar y reasignar.",
     "v5.7.0 — Cuentas por cobrar (Fase 6, en modo ERP): tablero de cobranza con por cobrar, vencido y cobrado del mes. Cada factura calcula su vencimiento con el plazo de crédito del cliente (nuevo campo en su ficha, 30 días por defecto) y puedes marcarla como cobrada con su fecha de pago. Las vencidas se resaltan.",
     "v5.6.0 — Selección múltiple en clientes: elige varios y elimínalos en lote (con sus contactos). Y se corrigió la duplicación de contactos al importar: ahora reconoce los que ya existen (por cliente y nombre) y limpia los duplicados anteriores en la siguiente importación.",
     "v5.5.0 — Se corrigió el límite de 1000: ahora la app trae TODOS los registros de la nube (paginando), así ves tus miles de clientes completos. Además, en la lista de clientes puedes ordenar por nombre (A→Z / Z→A) o por número de cliente (ascendente / descendente).",
@@ -2404,7 +2410,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.7.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.8.0 · Brida</div>
         </div>
       </div>
     </div>

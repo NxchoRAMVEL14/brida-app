@@ -122,7 +122,7 @@ const OPP = traductor(
     proximaAccion: "proxima_accion", fechaAccion: "fecha_accion", notas: "notas", mondayId: "monday_id", fechaVisita: "fecha_visita",
     traidoPorId: "traido_por_id", cotizadorId: "cotizador_id", origen: "origen",
     zonaReasignar: "zona_reasignar", numCliente: "num_cliente", montoSinIva: "monto_sin_iva", facturas: "facturas",
-    costo: "costo", compras: "compras",
+    costo: "costo", compras: "compras", sucursal: "sucursal",
   },
   ["monto", "montoOrig", "margen", "comisionPct",
    "fechaCotizacion", "fechaOC", "fechaPedido", "fechaFactura", "fechaAccion"]

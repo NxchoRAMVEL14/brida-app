@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3, FileUp, FileSpreadsheet
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3, FileUp, FileSpreadsheet, Wallet
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos, miPerfil, cargarEquipo } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
@@ -907,7 +907,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", numCliente: opp.numCliente || "", costo: opp.costo ?? "",
   });
   const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
-  const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false }]);
+  const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false, fechaPago: "" }]);
   const setF = (i, campos) => setFacturas(facturas.map((f, j) => j === i ? { ...f, ...campos } : f));
   const delF = (i) => setFacturas(facturas.filter((_, j) => j !== i));
   const totalFacturado = facturas.reduce((s, f) => s + (Number(f.monto) || 0), 0);
@@ -1155,6 +1155,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
                   <input value={f.facturista} onChange={(e) => setF(i, { facturista: e.target.value })} placeholder="Facturista" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
                   <select value={f.estado} onChange={(e) => setF(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="surtido">Surtido</option><option value="parcial">Parcial</option><option value="pendiente">Pendiente</option></select>
                 </div>
+                <div><div className="text-[10px]" style={{ color: f.fechaPago ? "#1F7A55" : C.dim }}>{f.fechaPago ? "Cobrada el" : "Fecha de pago (vacío = por cobrar)"}</div><input type="date" value={f.fechaPago || ""} onChange={(e) => setF(i, { fechaPago: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={{ ...inp, borderColor: f.fechaPago ? C.verde : undefined }} /></div>
                 <div className="flex items-center justify-between">
                   <button onClick={() => setF(i, { reasignada: !f.reasignada })} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: f.reasignada ? "#1F7A55" : C.dim }}>
                     <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: f.reasignada ? C.verde : C.borde, background: f.reasignada ? C.verde : "#fff" }}>{f.reasignada ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
@@ -1196,7 +1197,7 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
     nombre: cliente.nombre || "", tipo: cliente.tipo || "", estado: cliente.estado || "prospecto",
     plaza: cliente.plaza || "", giro: cliente.giro || "", rfc: cliente.rfc || "",
     direccion: cliente.direccion || "", notas: cliente.notas || "", clave: !!cliente.clave, alliance: !!cliente.alliance,
-    numCliente: cliente.numCliente || "",
+    numCliente: cliente.numCliente || "", plazo: cliente.plazo ?? "",
   });
   const [cts, setCts] = useState(() => (contactos || []).filter((c) => c.clienteId === cliente.id).map((c) => ({ ...c })));
   const [acts, setActs] = useState(() => (actividades || []).filter((a) => a.clienteId === cliente.id).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((a) => ({ ...a })));
@@ -1215,6 +1216,11 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
         <div className="p-4 space-y-3 pb-8">
           <input value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} placeholder="Nombre / razón social *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           <input value={d.numCliente} onChange={(e) => setD({ ...d, numCliente: e.target.value })} placeholder="Número de cliente (sistema Elektron)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+          <div className="flex items-center gap-2">
+            <span className="text-sm shrink-0" style={{ color: C.dim }}>Crédito:</span>
+            <input value={d.plazo} onChange={(e) => setD({ ...d, plazo: e.target.value })} inputMode="numeric" placeholder="30" className="w-20 rounded-lg px-3 py-2.5 text-sm text-center" style={{ ...inp, ...mono }} />
+            <span className="text-sm" style={{ color: C.dim }}>días de plazo</span>
+          </div>
           <div>
             <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Tipo</div>
             <div className="flex flex-wrap gap-1.5">
@@ -1333,7 +1339,7 @@ function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEli
           </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas de la cuenta" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           <div className="flex gap-2 pt-1">
-            <button onClick={() => d.nombre.trim() && onGuardar({ ...cliente, ...d }, cts.filter((c) => c.nombre.trim()), acts)}
+            <button onClick={() => d.nombre.trim() && onGuardar({ ...cliente, ...d, plazo: d.plazo === "" ? null : Number(d.plazo) }, cts.filter((c) => c.nombre.trim()), acts)}
               className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.nombre.trim() ? C.tinta : C.borde, color: "#fff" }}>
               {nuevo ? "Crear cliente" : "Guardar cambios"}
             </button>
@@ -2237,6 +2243,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.7.0 — Cuentas por cobrar (Fase 6, en modo ERP): tablero de cobranza con por cobrar, vencido y cobrado del mes. Cada factura calcula su vencimiento con el plazo de crédito del cliente (nuevo campo en su ficha, 30 días por defecto) y puedes marcarla como cobrada con su fecha de pago. Las vencidas se resaltan.",
     "v5.6.0 — Selección múltiple en clientes: elige varios y elimínalos en lote (con sus contactos). Y se corrigió la duplicación de contactos al importar: ahora reconoce los que ya existen (por cliente y nombre) y limpia los duplicados anteriores en la siguiente importación.",
     "v5.5.0 — Se corrigió el límite de 1000: ahora la app trae TODOS los registros de la nube (paginando), así ves tus miles de clientes completos. Además, en la lista de clientes puedes ordenar por nombre (A→Z / Z→A) o por número de cliente (ascendente / descendente).",
     "v5.4.0 — Reportes financieros (Fase 5, en modo ERP): tablero con del embudo a la caja (cotizado→ganado→facturado→margen y % de conversión), facturado por mes (12 meses), ranking por vendedor y por marca, y comisiones. Con botón para exportar todo el reporte a Excel. Se alimenta solo de lo que ya capturas.",
@@ -2397,7 +2404,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.6.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.7.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2632,6 +2639,7 @@ export default function App() {
   const [gerenteOpen, setGerenteOpen] = useState(false);
   const [reasigOpen, setReasigOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
+  const [cobranzaVer, setCobranzaVer] = useState("pendientes");
   const [selMode, setSelMode] = useState(false);
   const [selIds, setSelIds] = useState(() => new Set());
   const [sync, setSync] = useState("local");
@@ -2816,6 +2824,10 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
+  const marcarCobrada = (oppId, facturaId, fecha) => {
+    const ts = new Date().toISOString();
+    guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === oppId ? { ...o, actualizada: ts, facturas: (o.facturas || []).map((f) => f.id === facturaId ? { ...f, fechaPago: fecha } : f) } : o) });
+  };
   const toggleSel = (id) => setSelIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const salirSel = () => { setSelMode(false); setSelIds(new Set()); };
   const cambiarEtapaMasiva = (nuevaEtapa) => {
@@ -3078,6 +3090,7 @@ export default function App() {
   ];
   const NAV_ERP = [
     { id: "facturacion", icon: FileSpreadsheet, label: "Facturas" },
+    { id: "cobranza", icon: Wallet, label: "Cobranza" },
     { id: "inventario", icon: Package, label: "Inventario" },
     { id: "margenes", icon: BarChart3, label: "Márgenes" },
     { id: "reportes", icon: FileDown, label: "Reportes" },
@@ -4059,6 +4072,72 @@ export default function App() {
               </div>
               <button onClick={exportar} className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileDown size={16} /> Exportar reporte a Excel</button>
               <div className="text-xs" style={{ color: C.dim }}>Todo se calcula de lo que ya capturas: facturas, costos y etapas.</div>
+            </div>
+          );
+        })()}
+        {tab === "cobranza" && (() => {
+          const H = hoy();
+          const clientes = data.clientes || [];
+          const plazoDe = (o) => { const c = clientes.find((x) => x.id === o.clienteId) || clientes.find((x) => (x.nombre || "").toLowerCase() === (o.cliente || "").toLowerCase()); return c && c.plazo != null && c.plazo !== "" ? Number(c.plazo) : 30; };
+          const addDias = (fecha, dias) => { if (!fecha) return ""; const d = new Date(fecha + "T00:00:00"); d.setDate(d.getDate() + dias); return d.toISOString().slice(0, 10); };
+          const lineas = [];
+          (data.pipeline || []).forEach((o) => (o.facturas || []).forEach((f) => {
+            const monto = Number(f.monto) || 0;
+            const venc = addDias(f.fechaFactura, plazoDe(o));
+            const cobrada = !!f.fechaPago;
+            lineas.push({ o, f, monto, venc, cobrada, vencida: !cobrada && venc && venc < H });
+          }));
+          const pendientes = lineas.filter((l) => !l.cobrada);
+          const vencidas = pendientes.filter((l) => l.vencida);
+          const porCobrar = pendientes.reduce((s, l) => s + l.monto, 0);
+          const totalVencido = vencidas.reduce((s, l) => s + l.monto, 0);
+          const cobradoMes = lineas.filter((l) => l.cobrada && (l.f.fechaPago || "").slice(0, 7) === H.slice(0, 7)).reduce((s, l) => s + l.monto, 0);
+          const cobradas = lineas.filter((l) => l.cobrada);
+          const mostrar = (cobranzaVer === "cobradas" ? cobradas : pendientes).slice().sort((a, b) => cobranzaVer === "cobradas" ? (b.f.fechaPago || "").localeCompare(a.f.fechaPago || "") : (a.venc || "9999").localeCompare(b.venc || "9999"));
+          return (
+            <div className="space-y-3">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>ERP · Cuentas por cobrar</div>
+              <div className="grid grid-cols-3 gap-2">
+                <KPI label="Por cobrar" v={fMXN(porCobrar)} sub={pendientes.length + " facturas"} col={C.azul} />
+                <KPI label="Vencido" v={fMXN(totalVencido)} sub={vencidas.length + " facturas"} col={vencidas.length ? C.rojo : C.verde} bg={vencidas.length ? C.rojoBg : "#fff"} />
+                <KPI label="Cobrado (mes)" v={fMXN(cobradoMes)} col="#1F7A55" bg={C.verdeBg} />
+              </div>
+              {vencidas.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{vencidas.length} factura(s) vencida(s) por {fMXN(totalVencido)}. Dale seguimiento al cobro.</div> : null}
+              <div className="flex gap-1 p-1 rounded-lg" style={{ background: C.bezel2 + "18" }}>
+                {[["pendientes", "Por cobrar"], ["cobradas", "Cobradas"]].map(([v, lbl]) => (
+                  <button key={v} onClick={() => setCobranzaVer(v)} className="flex-1 py-1.5 rounded-md text-xs font-semibold" style={{ background: cobranzaVer === v ? "#fff" : "transparent", color: cobranzaVer === v ? C.tinta : C.dim, border: cobranzaVer === v ? `1px solid ${C.borde}` : "1px solid transparent" }}>{lbl}</button>
+                ))}
+              </div>
+              {lineas.length === 0 ? <Vacio>Aún no hay facturas. Regístralas en cada oportunidad (sección «Facturación») con su fecha.</Vacio> : mostrar.length === 0 ? <div className="rounded-lg border px-3 py-4 text-sm text-center" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>✓ {cobranzaVer === "pendientes" ? "Todo cobrado." : "Sin facturas cobradas aún."}</div> : (
+                <div className="space-y-2">
+                  {mostrar.slice(0, 300).map((l) => {
+                    const dias = l.venc ? diasEntre(H, l.venc) : null;
+                    return (
+                      <div key={l.o.id + l.f.id} className="rounded-xl border p-3 space-y-1" style={{ borderColor: l.vencida ? C.rojo : (l.cobrada ? C.verde : C.borde), background: l.vencida ? C.rojoBg : (l.cobrada ? C.verdeBg : C.panel) }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold truncate">{l.o.cliente}{l.o.numCliente ? ` · #${l.o.numCliente}` : ""}</div>
+                            <div className="text-xs" style={{ ...mono, color: C.dim }}>{[l.f.factura && "F: " + l.f.factura, l.f.fechaFactura && "fact " + l.f.fechaFactura].filter(Boolean).join(" · ")}</div>
+                          </div>
+                          <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(l.monto)}</div>
+                        </div>
+                        {l.cobrada ? (
+                          <div className="flex items-center justify-between text-xs" style={{ ...mono, color: "#1F7A55" }}>
+                            <span>✓ Cobrada el {l.f.fechaPago}</span>
+                            <button onClick={() => marcarCobrada(l.o.id, l.f.id, "")} className="underline" style={{ color: C.dim }}>deshacer</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs" style={{ ...mono, color: l.vencida ? "#8B2E2E" : C.dim }}>{l.venc ? `Vence ${l.venc}${dias != null ? (dias < 0 ? ` (vencida ${-dias}d)` : dias === 0 ? " (hoy)" : ` (en ${dias}d)`) : ""}` : "Sin fecha de factura"}</span>
+                            <button onClick={() => marcarCobrada(l.o.id, l.f.id, H)} className="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0" style={{ background: C.verde, color: "#fff" }}>Marcar cobrada</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="text-xs" style={{ color: C.dim }}>El vencimiento se calcula con el plazo de crédito de cada cliente (edítalo en su ficha; por defecto 30 días). Marca la fecha de pago cuando entra el cobro.</div>
             </div>
           );
         })()}

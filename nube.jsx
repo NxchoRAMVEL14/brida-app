@@ -140,7 +140,7 @@ const TIEMPO = traductor(
 );
 const CLIENTE = traductor(
   { nombre: "nombre", tipo: "tipo", giro: "giro", plaza: "plaza", rfc: "rfc",
-    direccion: "direccion", estado: "estado", notas: "notas", clave: "clave", alliance: "alliance", numCliente: "num_cliente" }
+    direccion: "direccion", estado: "estado", notas: "notas", clave: "clave", alliance: "alliance", numCliente: "num_cliente", plazo: "plazo" }
 );
 const CONTACTO = traductor(
   { clienteId: "cliente_id", nombre: "nombre", puesto: "puesto", telefono: "telefono",

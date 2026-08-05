@@ -202,21 +202,39 @@ async function idsDe(tabla, ownerCol, uid, extra) {
 }
 
 // ═══════════════════════ LECTURA (nube → bloque) ═════════════════
+// Lee TODAS las filas de una tabla, paginando de 1000 en 1000 (Supabase
+// devuelve máximo 1000 por consulta). Devuelve { data } o { error }.
+async function leerTodo(tabla, orderCol, asc, filtro) {
+  const paso = 1000; let desde = 0; let todas = [];
+  for (;;) {
+    let query = sb.from(tabla).select("*");
+    if (filtro) query = filtro(query);
+    query = query.order(orderCol, { ascending: asc }).range(desde, desde + paso - 1);
+    const { data, error } = await query;
+    if (error) return { error };
+    todas = todas.concat(data || []);
+    if ((data || []).length < paso) break;
+    desde += paso;
+    if (desde > 300000) break;
+  }
+  return { data: todas };
+}
+
 // Devuelve { data: <bloque como lo espera la app>, actualizado }.
 export async function leerNube(uid) {
   const q = (b) => b.then((r) => r).catch((e) => ({ error: { message: String((e && e.message) || e) } }));
   const [ropp, rvis, rtar, rtie, rmet, rcli, rcon, ract, rprod, rcot, rdesc, raju] = await Promise.all([
-    q(sb.from("oportunidades").select("*").eq("archivada", false).order("actualizada", { ascending: false })),
+    q(leerTodo("oportunidades", "actualizada", false, (b) => b.eq("archivada", false))),
     q(sb.from("visitas").select("*").eq("vendedor_id", uid).order("fecha", { ascending: false })),
     q(sb.from("tareas").select("*").eq("user_id", uid).order("fecha", { ascending: true })),
     q(sb.from("tiempo").select("*").eq("user_id", uid).order("fecha", { ascending: false })),
     q(sb.from("metas").select("*").eq("user_id", uid).order("creada", { ascending: true })),
-    q(sb.from("clientes").select("*").order("actualizada", { ascending: false })),
-    q(sb.from("contactos").select("*").order("creada", { ascending: true })),
-    q(sb.from("actividades").select("*").order("fecha", { ascending: false })),
-    q(sb.from("productos").select("*").order("descripcion", { ascending: true })),
-    q(sb.from("cotizaciones").select("*").order("actualizada", { ascending: false })),
-    q(sb.from("descuentos").select("*").order("codigo", { ascending: true })),
+    q(leerTodo("clientes", "nombre", true)),
+    q(leerTodo("contactos", "creada", true)),
+    q(leerTodo("actividades", "fecha", false)),
+    q(leerTodo("productos", "descripcion", true)),
+    q(leerTodo("cotizaciones", "actualizada", false)),
+    q(leerTodo("descuentos", "codigo", true)),
     q(sb.from("ajustes").select("*").eq("user_id", uid).maybeSingle()),
   ]);
   [["oportunidades", ropp], ["visitas", rvis], ["tareas", rtar], ["tiempo", rtie], ["metas", rmet], ["clientes", rcli], ["contactos", rcon], ["actividades", ract], ["productos", rprod], ["cotizaciones", rcot], ["descuentos", rdesc], ["ajustes", raju]]

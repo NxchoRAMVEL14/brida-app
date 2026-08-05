@@ -2237,6 +2237,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v5.5.0 — Se corrigió el límite de 1000: ahora la app trae TODOS los registros de la nube (paginando), así ves tus miles de clientes completos. Además, en la lista de clientes puedes ordenar por nombre (A→Z / Z→A) o por número de cliente (ascendente / descendente).",
     "v5.4.0 — Reportes financieros (Fase 5, en modo ERP): tablero con del embudo a la caja (cotizado→ganado→facturado→margen y % de conversión), facturado por mes (12 meses), ranking por vendedor y por marca, y comisiones. Con botón para exportar todo el reporte a Excel. Se alimenta solo de lo que ya capturas.",
     "v5.3.0 — Importar clientes desde Excel (No., Cliente, Segmento, Ciudad, Entidad) con dedupe automático, y número de cliente en toda la app: en clientes y oportunidades ahora puedes buscar por número (del sistema Elektron), no solo por razón social. Al elegir cliente en una oportunidad se autollena su número.",
     "v5.0.0 — Brida ahora es ERP + CRM. Fase 2: costo y margen real por trato (venta − costo), con márgenes por marca en Análisis. Fase 3: compras a proveedores — registra las OC a Schneider/Siemens con tiempos de entrega, y un tablero «Compras y entregas» con pendientes, en tránsito y entregas atrasadas.",
@@ -2395,7 +2396,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.4.2 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.5.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2561,6 +2562,7 @@ export default function App() {
   const [cliEdit, setCliEdit] = useState(null);
   const [buscarCli, setBuscarCli] = useState("");
   const [msgCli, setMsgCli] = useState("");
+  const [ordenCli, setOrdenCli] = useState("nombre");
   const importarArchivoClientes = async (ev) => {
     const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
     setMsgCli("Leyendo archivo…");
@@ -3555,11 +3557,28 @@ export default function App() {
                 <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
                 <input value={buscarCli} onChange={(e) => setBuscarCli(e.target.value)} placeholder="Buscar por nombre o número de cliente…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
               </div>
+              <div className="flex gap-1 mb-2 p-1 rounded-lg" style={{ background: C.bezel2 + "18" }}>
+                {[["nombre", "A → Z"], ["nombreDesc", "Z → A"], ["num", "N° ↑"], ["numDesc", "N° ↓"]].map(([o, lbl]) => (
+                  <button key={o} onClick={() => setOrdenCli(o)} className="flex-1 py-1.5 rounded-md text-xs font-semibold" style={{ background: ordenCli === o ? "#fff" : "transparent", color: ordenCli === o ? C.tinta : C.dim, border: ordenCli === o ? `1px solid ${C.borde}` : "1px solid transparent" }}>{lbl}</button>
+                ))}
+              </div>
               {(data.clientes || []).length === 0 ? (
                 <div className="text-sm text-center py-6" style={{ color: C.dim }}>Aún no tienes clientes. Toca «Nuevo», o «Importar» para cargarlos desde Excel.</div>
-              ) : (
+              ) : (() => {
+                const q = buscarCli.trim().toLowerCase();
+                const numOf = (c) => { const n = parseInt((c.numCliente || "").replace(/\D/g, ""), 10); return isNaN(n) ? Infinity : n; };
+                let lista = (data.clientes || []).filter((c) => !q || `${c.nombre} ${c.numCliente || ""}`.toLowerCase().includes(q));
+                lista = lista.slice().sort((a, b) => {
+                  if (ordenCli === "num") return numOf(a) - numOf(b) || (a.nombre || "").localeCompare(b.nombre || "");
+                  if (ordenCli === "numDesc") return numOf(b) - numOf(a) || (a.nombre || "").localeCompare(b.nombre || "");
+                  const cmp = (a.nombre || "").localeCompare(b.nombre || "", "es", { sensitivity: "base" });
+                  return ordenCli === "nombreDesc" ? -cmp : cmp;
+                });
+                const total = lista.length;
+                lista = lista.slice(0, 400);
+                return (
                 <div className="space-y-1.5">
-                  {(data.clientes || []).filter((c) => { const q = buscarCli.trim().toLowerCase(); return !q || `${c.nombre} ${c.numCliente || ""}`.toLowerCase().includes(q); }).slice(0, 300).map((c) => {
+                  {lista.map((c) => {
                     const est = ESTADOS_CLIENTE.find((s) => s.id === c.estado) || ESTADOS_CLIENTE[0];
                     const nCt = (data.contactos || []).filter((ct) => ct.clienteId === c.id).length;
                     const tipoLb = (TIPOS_CLIENTE.find((t) => t.id === c.tipo) || {}).label || "";
@@ -3576,8 +3595,10 @@ export default function App() {
                       </button>
                     );
                   })}
+                  {total > 400 ? <div className="text-xs text-center py-2" style={{ color: C.dim }}>Mostrando 400 de {total}. Usa el buscador o el orden para encontrar al cliente.</div> : null}
                 </div>
-              )}
+                );
+              })()}
             </div>
             <div className="text-xs mt-3 px-1" style={{ color: C.dim }}>Las oportunidades se ligan al cliente por su nombre. Escríbelo igual en el pipeline y en la ficha para verlas juntas.</div>
           </div>

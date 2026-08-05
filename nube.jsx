@@ -269,8 +269,13 @@ export async function subirNube(uid, estado) {
   const fallos = [];
   const up = async (tabla, filas) => {
     if (!filas.length) return;
-    for (let i = 0; i < filas.length; i += 500) {
-      const { error } = await sb.from(tabla).upsert(filas.slice(i, i + 500), { onConflict: "id" });
+    // Quitar ids duplicados (quedarse con el último) — evita el error
+    // "ON CONFLICT DO UPDATE cannot affect row a second time".
+    const porId = new Map();
+    for (const f of filas) if (f && f.id) porId.set(f.id, f);
+    const unicas = [...porId.values()];
+    for (let i = 0; i < unicas.length; i += 500) {
+      const { error } = await sb.from(tabla).upsert(unicas.slice(i, i + 500), { onConflict: "id" });
       if (error) throw error;
     }
   };

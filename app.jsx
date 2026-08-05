@@ -2395,7 +2395,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.4.1 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.4.2 · Brida</div>
         </div>
       </div>
     </div>
@@ -2860,7 +2860,8 @@ export default function App() {
       else { cid = uid(); const nc = { ...c, id: cid, creada: ts, actualizada: ts }; clientes.unshift(nc); porNum[norm(c.numCliente)] = nc; porNom[norm(c.nombre)] = nc; }
       if (contacto && contacto.nombre) contactosNuevos.push({ ...contacto, id: uid(), clienteId: cid });
     });
-    guardar({ ...data, clientes, contactos: [...(data.contactos || []), ...contactosNuevos] });
+    const dedupe = (arr) => { const m = new Map(); arr.forEach((x) => { if (x && x.id) m.set(x.id, x); }); return [...m.values()]; };
+    guardar({ ...data, clientes: dedupe(clientes), contactos: dedupe([...(data.contactos || []), ...contactosNuevos]) });
   };
   const guardarProducto = (p) => {
     const id = p.id || uid();

@@ -2380,6 +2380,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v6.1.1 — Corrección: las oportunidades creadas desde el formulario «Solicitud» ahora entran con la etapa Oportunidad entrante bien puesta y se sincronizan solas con la nube (antes quedaban con la etapa en blanco y no subían hasta abrirlas y guardarlas a mano).",
     "v6.1.0 — Archivos en la solicitud entrante: al registrar una oportunidad puedes adjuntar varios archivos (planos, fotos, Excel, Word, PDF). Las fotos se comprimen solas para ahorrar espacio; todo se sube a la nube y luego se ve y descarga desde la ficha de la oportunidad. Además se registra la fecha en que una oportunidad se marca como Perdida, para depurar sus archivos automáticamente más adelante.",
     "v6.0.0 — Formulario de solicitud entrante (como en Monday): botón «Solicitud» en el pipeline abre un formulario con tipo, cliente (por nombre o número), nombre, descripción, correo, teléfono, solicitante, sucursal y medio de recepción. Al enviarlo entra directo como oportunidad entrante y guarda al solicitante como contacto. Además: filtro por sucursal en el pipeline.",
     "v5.8.0 — Selector de sucursal en las oportunidades: elige la sucursal (número + nombre) de una lista con las 84 sucursales, en vez de escribirla a mano. Queda lista para cotizar y reasignar.",
@@ -2544,7 +2545,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.1.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.1.1 · Brida</div>
         </div>
       </div>
     </div>
@@ -2975,7 +2976,7 @@ export default function App() {
   const crearEntrante = async (opp, contacto, files) => {
     const ts = new Date().toISOString();
     const id = uid();
-    const nueva = { ...opp, id, creada: ts, actualizada: ts, etapa: "entrante", traidoPorId: opp.traidoPorId || miId, archivos: [] };
+    const nueva = { ...opp, id, creada: ts, actualizada: ts, etapa: "visita", traidoPorId: opp.traidoPorId || miId, archivos: [] };
     const next = { ...data, pipeline: [nueva, ...data.pipeline] };
     if (contacto && contacto.nombre && opp.clienteId) next.contactos = [{ ...contacto, id: uid(), clienteId: opp.clienteId }, ...(data.contactos || [])];
     guardar(next);

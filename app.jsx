@@ -2163,6 +2163,74 @@ function ComprasSheet({ pipeline, onCerrar }) {
   );
 }
 
+/* ── Formulario de oportunidad entrante (estilo Monday) ───────────── */
+function FormularioEntrante({ clientes, onCrear, onCerrar }) {
+  const [d, setD] = useState({ tipo: "", cliente: "", clienteId: "", numCliente: "", titulo: "", descripcion: "", correo: "", telefono: "", solicitante: "", sucursal: "", medio: "" });
+  const [msg, setMsg] = useState("");
+  const set = (k, v) => setD((x) => ({ ...x, [k]: v }));
+  const enviar = () => {
+    if (!d.cliente.trim()) { setMsg("Falta el cliente."); return; }
+    if (!d.titulo.trim()) { setMsg("Falta el nombre de la solicitud."); return; }
+    if (!d.descripcion.trim()) { setMsg("Falta la descripción."); return; }
+    const notas = [d.tipo && `Tipo: ${d.tipo}`, `Descripción: ${d.descripcion}`, d.solicitante && `Solicitante: ${d.solicitante}`, d.correo && `Correo: ${d.correo}`, d.telefono && `Tel: ${d.telefono}`, d.medio && `Medio: ${d.medio}`].filter(Boolean).join("\n");
+    const opp = { cliente: d.cliente.trim(), clienteId: d.clienteId, numCliente: d.numCliente, titulo: d.titulo.trim(), notas, sucursal: d.sucursal, origen: d.medio };
+    const contacto = d.solicitante.trim() ? { nombre: d.solicitante.trim(), correo: d.correo.trim(), telefono: d.telefono.trim() } : null;
+    onCrear(opp, contacto);
+    onCerrar();
+  };
+  const lbl = (t, req) => <div className="text-xs font-semibold mb-1" style={{ color: C.tinta }}>{t}{req ? <span style={{ color: C.rojo }}> *</span> : null}</div>;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Download size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Solicitud entrante</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div>{lbl("Tipo de oportunidad")}
+            <select value={d.tipo} onChange={(e) => set("tipo", e.target.value)} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp}>
+              <option value="">Selecciona…</option><option value="Proyecto">Proyecto</option><option value="Transaccional">Transaccional</option>
+            </select>
+          </div>
+          <div>{lbl("Cliente", true)}
+            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Nombre o número de cliente" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            {d.cliente.trim() && !d.clienteId ? (() => {
+              const q = d.cliente.trim().toLowerCase();
+              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(q) || (c.numCliente || "").toLowerCase().includes(q)).slice(0, 6);
+              return ms.length ? <div className="mt-1 space-y-1">{ms.map((c) => <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id, numCliente: c.numCliente || "" })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}><Building2 size={12} style={{ color: C.azul }} /> {c.nombre}{c.numCliente ? ` · #${c.numCliente}` : ""}</button>)}</div> : null;
+            })() : null}
+            {d.clienteId ? <div className="mt-1 text-xs flex items-center gap-1.5" style={{ color: C.verde }}><Check size={12} /> Vinculado{d.numCliente ? ` · #${d.numCliente}` : ""}</div> : null}
+          </div>
+          <div>{lbl("Nombre de la solicitud o proyecto", true)}
+            <input value={d.titulo} onChange={(e) => set("titulo", e.target.value)} placeholder="Ej. Tablero de control para línea 3" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div>{lbl("Descripción", true)}
+            <textarea value={d.descripcion} onChange={(e) => set("descripcion", e.target.value)} rows={3} placeholder="Qué necesita el cliente, alcance, marcas, cantidades…" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>{lbl("Correo")}<input value={d.correo} onChange={(e) => set("correo", e.target.value)} placeholder="correo@…" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} /></div>
+            <div>{lbl("Teléfono")}<input value={d.telefono} onChange={(e) => set("telefono", e.target.value)} inputMode="tel" placeholder="(+52)…" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} /></div>
+          </div>
+          <div>{lbl("Solicitante")}
+            <input value={d.solicitante} onChange={(e) => set("solicitante", e.target.value)} placeholder="Quién lo pide (se guarda como contacto)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div>{lbl("Sucursal")}
+            <select value={d.sucursal} onChange={(e) => set("sucursal", e.target.value)} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp}>
+              <option value="">Selecciona…</option>{SUCURSALES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>{lbl("Medio de recepción")}
+            <div className="flex gap-2">{["Correo", "Visita", "WhatsApp"].map((m) => <button key={m} onClick={() => set("medio", d.medio === m ? "" : m)} className="flex-1 py-2 rounded-lg border text-sm font-semibold" style={{ borderColor: d.medio === m ? C.ambar : C.borde, background: d.medio === m ? C.ambarBg : "#fff", color: d.medio === m ? "#8A5A00" : C.tinta }}>{m}</button>)}</div>
+          </div>
+          {msg ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{msg}</div> : null}
+          <button onClick={enviar} className="w-full py-3 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.1em", background: C.ambar, color: "#fff" }}>Registrar oportunidad</button>
+          <div className="text-xs" style={{ color: C.dim }}>Entra directo al pipeline como «Oportunidad entrante», con el solicitante guardado como contacto del cliente.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
@@ -2248,6 +2316,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v6.0.0 — Formulario de solicitud entrante (como en Monday): botón «Solicitud» en el pipeline abre un formulario con tipo, cliente (por nombre o número), nombre, descripción, correo, teléfono, solicitante, sucursal y medio de recepción. Al enviarlo entra directo como oportunidad entrante y guarda al solicitante como contacto. Además: filtro por sucursal en el pipeline.",
     "v5.8.0 — Selector de sucursal en las oportunidades: elige la sucursal (número + nombre) de una lista con las 84 sucursales, en vez de escribirla a mano. Queda lista para cotizar y reasignar.",
     "v5.7.0 — Cuentas por cobrar (Fase 6, en modo ERP): tablero de cobranza con por cobrar, vencido y cobrado del mes. Cada factura calcula su vencimiento con el plazo de crédito del cliente (nuevo campo en su ficha, 30 días por defecto) y puedes marcarla como cobrada con su fecha de pago. Las vencidas se resaltan.",
     "v5.6.0 — Selección múltiple en clientes: elige varios y elimínalos en lote (con sus contactos). Y se corrigió la duplicación de contactos al importar: ahora reconoce los que ya existen (por cliente y nombre) y limpia los duplicados anteriores en la siguiente importación.",
@@ -2410,7 +2479,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.8.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.0.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2606,6 +2675,7 @@ export default function App() {
   const [verHechas, setVerHechas] = useState(false);
   const [filtroE, setFiltroE] = useState("todas");
   const [vista, setVista] = useState("todas");
+  const [filtroSuc, setFiltroSuc] = useState("todas");
   const [busca, setBusca] = useState("");
   const [copiado, setCopiado] = useState(false);
   const [textoManual, setTextoManual] = useState(null);
@@ -2646,6 +2716,7 @@ export default function App() {
   const [reasigOpen, setReasigOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
   const [cobranzaVer, setCobranzaVer] = useState("pendientes");
+  const [formEntrante, setFormEntrante] = useState(false);
   const [selMode, setSelMode] = useState(false);
   const [selIds, setSelIds] = useState(() => new Set());
   const [sync, setSync] = useState("local");
@@ -2833,6 +2904,13 @@ export default function App() {
   const marcarCobrada = (oppId, facturaId, fecha) => {
     const ts = new Date().toISOString();
     guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === oppId ? { ...o, actualizada: ts, facturas: (o.facturas || []).map((f) => f.id === facturaId ? { ...f, fechaPago: fecha } : f) } : o) });
+  };
+  const crearEntrante = (opp, contacto) => {
+    const ts = new Date().toISOString();
+    const nueva = { ...opp, id: uid(), creada: ts, actualizada: ts, etapa: "entrante", traidoPorId: opp.traidoPorId || miId };
+    const next = { ...data, pipeline: [nueva, ...data.pipeline] };
+    if (contacto && contacto.nombre && opp.clienteId) next.contactos = [{ ...contacto, id: uid(), clienteId: opp.clienteId }, ...(data.contactos || [])];
+    guardar(next);
   };
   const toggleSel = (id) => setSelIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const salirSel = () => { setSelMode(false); setSelIds(new Set()); };
@@ -3075,6 +3153,7 @@ export default function App() {
   const oppsFiltradas = data.pipeline
     .filter((o) => vista === "todas" ? true : vista === "mias" ? ((o.traidoPorId || o.vendedorId) === miId) : (o.cotizadorId === miId))
     .filter((o) => filtroE === "todas" ? true : o.etapa === filtroE)
+    .filter((o) => filtroSuc === "todas" ? true : (o.sucursal || "") === filtroSuc)
     .filter((o) => { const q = busca.trim().toLowerCase(); return !q || [o.cliente, o.numCliente, o.titulo, o.marca, o.plaza, o.vendedor, o.numCotizacion, o.ocCliente, o.numPedido, o.numFactura].some((v) => (v || "").toLowerCase().includes(q)); })
     .sort((a, b) => {
       const ia = ETAPAS.findIndex((e) => e.id === a.etapa), ib = ETAPAS.findIndex((e) => e.id === b.etapa);
@@ -3406,6 +3485,9 @@ export default function App() {
             <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Resumen del pipeline</div>
+                <button onClick={() => setFormEntrante(true)} className="px-3 py-2 rounded-xl border font-semibold flex items-center gap-1.5" style={{ borderColor: C.ambar, color: "#8A5A00", background: C.ambarBg }}>
+                  <Download size={15} /> Solicitud
+                </button>
                 <button onClick={() => setOppEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
                   <Plus size={16} /> Nueva
                 </button>
@@ -3481,6 +3563,15 @@ export default function App() {
               <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar cliente, vendedor, cotización, pedido, factura…" className="flex-1 text-sm min-w-0" style={{ background: "transparent", color: C.tinta }} />
               {busca && <button onClick={() => setBusca("")}><X size={14} style={{ color: C.dim }} /></button>}
             </div>
+            {(() => {
+              const sucs = [...new Set((data.pipeline || []).map((o) => o.sucursal).filter(Boolean))].sort((a, b) => (parseInt(a) || 999) - (parseInt(b) || 999));
+              return sucs.length ? (
+                <select value={filtroSuc} onChange={(e) => setFiltroSuc(e.target.value)} className="w-full mt-2 rounded-lg px-3 py-2 text-sm" style={inp}>
+                  <option value="todas">Todas las sucursales</option>
+                  {sucs.map((s) => <option key={s} value={s}>{s} ({(data.pipeline || []).filter((o) => (o.sucursal || "") === s).length})</option>)}
+                </select>
+              ) : null;
+            })()}
             <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
               {[{ id: "todas", label: "Todas" }, ...ETAPAS].map((e) => (
                 <button key={e.id} onClick={() => setFiltroE(e.id)} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold whitespace-nowrap"
@@ -4344,6 +4435,7 @@ export default function App() {
       {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
       {iaOpen && <AsistenteIASheet data={data} onCerrar={() => setIaOpen(false)} />}
       {comprasOpen && <ComprasSheet pipeline={data.pipeline} onCerrar={() => setComprasOpen(false)} />}
+      {formEntrante && <FormularioEntrante clientes={data.clientes} onCrear={crearEntrante} onCerrar={() => setFormEntrante(false)} />}
     </div>
   );
 }

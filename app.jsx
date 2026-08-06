@@ -2,13 +2,31 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3, FileUp, FileSpreadsheet, Wallet
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3, FileUp, FileSpreadsheet, Wallet, Paperclip
 } from "lucide-react";
-import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos, miPerfil, cargarEquipo } from "./nube.jsx";
+import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos, miPerfil, cargarEquipo, subirArchivoOpp, urlArchivoOpp, borrarArchivoOpp } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
 import { leerXLSX, mapearMonday, mapearCaratula, mapearListaPrecios, mapearClientes } from "./importar.jsx";
+
+// Comprime imágenes en el navegador antes de subir; otros archivos se dejan igual.
+async function comprimirArchivo(file) {
+  if (!file.type || !file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+    const MAX = 1600;
+    let w = img.width, h = img.height;
+    if (w > MAX || h > MAX) { const r = Math.min(MAX / w, MAX / h); w = Math.round(w * r); h = Math.round(h * r); }
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(img.src);
+    const blob = await new Promise((res) => cv.toBlob(res, "image/jpeg", 0.75));
+    if (!blob || blob.size >= (file.size || Infinity)) return file;
+    const nombre = (file.name || "foto").replace(/\.(png|jpe?g|webp|heic|heif|bmp)$/i, "") + ".jpg";
+    return new File([blob], nombre, { type: "image/jpeg" });
+  } catch (e) { return file; }
+}
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
@@ -1141,6 +1159,19 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
               </div>
             ))}
           </div>
+          {(opp.archivos && opp.archivos.length) ? (
+            <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Paperclip size={12} /> Archivos adjuntos · {opp.archivos.length}</div>
+              <div className="space-y-1">
+                {opp.archivos.map((a, i) => (
+                  <button key={i} onClick={async () => { try { window.open(await urlArchivoOpp(a.path), "_blank"); } catch (e) { alert("No se pudo abrir el archivo: " + (e.message || e)); } }} className="w-full flex items-center gap-2 text-xs px-2 py-2 rounded-lg border text-left" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}>
+                    <FileText size={14} style={{ color: C.azul }} /><span className="flex-1 truncate">{a.nombre}</span><Download size={14} style={{ color: C.ambar }} />
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px]" style={{ color: C.dim }}>Los archivos se adjuntan al registrar la solicitud. Toca para abrir o descargar.</div>
+            </div>
+          ) : null}
           <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
             <div className="flex items-center justify-between">
               <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><FileText size={12} /> Facturación{facturas.length ? ` · ${fMXN(totalFacturado)}` : ""}</div>
@@ -2167,7 +2198,23 @@ function ComprasSheet({ pipeline, onCerrar }) {
 function FormularioEntrante({ clientes, onCrear, onCerrar }) {
   const [d, setD] = useState({ tipo: "", cliente: "", clienteId: "", numCliente: "", titulo: "", descripcion: "", correo: "", telefono: "", solicitante: "", sucursal: "", medio: "" });
   const [msg, setMsg] = useState("");
+  const [files, setFiles] = useState([]);
+  const [prep, setPrep] = useState(false);
   const set = (k, v) => setD((x) => ({ ...x, [k]: v }));
+  const agregarFiles = async (lista) => {
+    const arr = Array.from(lista || []);
+    if (!arr.length) return;
+    setPrep(true);
+    const procesados = [];
+    for (const f of arr) {
+      if (f.size > 50 * 1024 * 1024) { setMsg(`"${f.name}" supera 50 MB y no se puede subir.`); continue; }
+      procesados.push(await comprimirArchivo(f));
+    }
+    setFiles((x) => [...x, ...procesados]);
+    setPrep(false);
+  };
+  const quitarFile = (i) => setFiles((x) => x.filter((_, j) => j !== i));
+  const fmtKB = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
   const enviar = () => {
     if (!d.cliente.trim()) { setMsg("Falta el cliente."); return; }
     if (!d.titulo.trim()) { setMsg("Falta el nombre de la solicitud."); return; }
@@ -2175,7 +2222,7 @@ function FormularioEntrante({ clientes, onCrear, onCerrar }) {
     const notas = [d.tipo && `Tipo: ${d.tipo}`, `Descripción: ${d.descripcion}`, d.solicitante && `Solicitante: ${d.solicitante}`, d.correo && `Correo: ${d.correo}`, d.telefono && `Tel: ${d.telefono}`, d.medio && `Medio: ${d.medio}`].filter(Boolean).join("\n");
     const opp = { cliente: d.cliente.trim(), clienteId: d.clienteId, numCliente: d.numCliente, titulo: d.titulo.trim(), notas, sucursal: d.sucursal, origen: d.medio };
     const contacto = d.solicitante.trim() ? { nombre: d.solicitante.trim(), correo: d.correo.trim(), telefono: d.telefono.trim() } : null;
-    onCrear(opp, contacto);
+    onCrear(opp, contacto, files);
     onCerrar();
   };
   const lbl = (t, req) => <div className="text-xs font-semibold mb-1" style={{ color: C.tinta }}>{t}{req ? <span style={{ color: C.rojo }}> *</span> : null}</div>;
@@ -2221,6 +2268,23 @@ function FormularioEntrante({ clientes, onCrear, onCerrar }) {
           </div>
           <div>{lbl("Medio de recepción")}
             <div className="flex gap-2">{["Correo", "Visita", "WhatsApp"].map((m) => <button key={m} onClick={() => set("medio", d.medio === m ? "" : m)} className="flex-1 py-2 rounded-lg border text-sm font-semibold" style={{ borderColor: d.medio === m ? C.ambar : C.borde, background: d.medio === m ? C.ambarBg : "#fff", color: d.medio === m ? "#8A5A00" : C.tinta }}>{m}</button>)}</div>
+          </div>
+          <div>{lbl("Archivos (planos, fotos, Excel, PDF…)")}
+            <label className="w-full rounded-lg border-2 border-dashed px-3 py-3 text-sm flex items-center justify-center gap-2 cursor-pointer" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+              <Paperclip size={15} style={{ color: C.ambar }} /> {prep ? "Preparando…" : "Adjuntar archivos"}
+              <input type="file" multiple className="hidden" onChange={(e) => { agregarFiles(e.target.files); e.target.value = ""; }} />
+            </label>
+            {files.length ? (
+              <div className="mt-2 space-y-1">
+                {files.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg border" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}>
+                    <FileText size={13} style={{ color: C.azul }} /><span className="flex-1 truncate">{f.name}</span><span style={{ color: C.dim }}>{fmtKB(f.size)}</span>
+                    <button onClick={() => quitarFile(i)}><X size={14} style={{ color: C.rojo }} /></button>
+                  </div>
+                ))}
+                <div className="text-xs" style={{ color: C.dim }}>Las fotos se comprimen solas. Máx. 50 MB por archivo.</div>
+              </div>
+            ) : null}
           </div>
           {msg ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{msg}</div> : null}
           <button onClick={enviar} className="w-full py-3 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.1em", background: C.ambar, color: "#fff" }}>Registrar oportunidad</button>
@@ -2316,6 +2380,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v6.1.0 — Archivos en la solicitud entrante: al registrar una oportunidad puedes adjuntar varios archivos (planos, fotos, Excel, Word, PDF). Las fotos se comprimen solas para ahorrar espacio; todo se sube a la nube y luego se ve y descarga desde la ficha de la oportunidad. Además se registra la fecha en que una oportunidad se marca como Perdida, para depurar sus archivos automáticamente más adelante.",
     "v6.0.0 — Formulario de solicitud entrante (como en Monday): botón «Solicitud» en el pipeline abre un formulario con tipo, cliente (por nombre o número), nombre, descripción, correo, teléfono, solicitante, sucursal y medio de recepción. Al enviarlo entra directo como oportunidad entrante y guarda al solicitante como contacto. Además: filtro por sucursal en el pipeline.",
     "v5.8.0 — Selector de sucursal en las oportunidades: elige la sucursal (número + nombre) de una lista con las 84 sucursales, en vez de escribirla a mano. Queda lista para cotizar y reasignar.",
     "v5.7.0 — Cuentas por cobrar (Fase 6, en modo ERP): tablero de cobranza con por cobrar, vencido y cobrado del mes. Cada factura calcula su vencimiento con el plazo de crédito del cliente (nuevo campo en su ficha, 30 días por defecto) y puedes marcarla como cobrada con su fecha de pago. Las vencidas se resaltan.",
@@ -2479,7 +2544,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.0.0 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.1.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2894,6 +2959,8 @@ export default function App() {
     const ts = new Date().toISOString();
     const o2 = { ...o };
     if (!o2.fechaVisita) o2.fechaVisita = o.id ? (data.pipeline.find((x) => x.id === o.id) || {}).fechaVisita || ts.slice(0, 10) : ts.slice(0, 10);
+    if (o.etapa === "perdido" && !o2.fechaPerdido) o2.fechaPerdido = ts.slice(0, 10);
+    if (o.etapa !== "perdido" && o2.fechaPerdido) o2.fechaPerdido = "";
     if (!o.id && !o2.traidoPorId && miId) o2.traidoPorId = miId;
     const pipeline = o2.id
       ? data.pipeline.map((x) => x.id === o2.id ? { ...x, ...o2, actualizada: ts } : x)
@@ -2905,19 +2972,29 @@ export default function App() {
     const ts = new Date().toISOString();
     guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === oppId ? { ...o, actualizada: ts, facturas: (o.facturas || []).map((f) => f.id === facturaId ? { ...f, fechaPago: fecha } : f) } : o) });
   };
-  const crearEntrante = (opp, contacto) => {
+  const crearEntrante = async (opp, contacto, files) => {
     const ts = new Date().toISOString();
-    const nueva = { ...opp, id: uid(), creada: ts, actualizada: ts, etapa: "entrante", traidoPorId: opp.traidoPorId || miId };
+    const id = uid();
+    const nueva = { ...opp, id, creada: ts, actualizada: ts, etapa: "entrante", traidoPorId: opp.traidoPorId || miId, archivos: [] };
     const next = { ...data, pipeline: [nueva, ...data.pipeline] };
     if (contacto && contacto.nombre && opp.clienteId) next.contactos = [{ ...contacto, id: uid(), clienteId: opp.clienteId }, ...(data.contactos || [])];
     guardar(next);
+    if (files && files.length) {
+      try {
+        const refs = [];
+        for (const f of files) refs.push(await subirArchivoOpp(id, f));
+        guardar({ ...next, pipeline: next.pipeline.map((o) => o.id === id ? { ...o, archivos: refs, actualizada: new Date().toISOString() } : o) });
+      } catch (e) {
+        alert("La oportunidad se creó, pero uno o más archivos no se subieron: " + (e.message || e) + "\n\nRevisa que ya corriste el SQL del bucket en Supabase.");
+      }
+    }
   };
   const toggleSel = (id) => setSelIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const salirSel = () => { setSelMode(false); setSelIds(new Set()); };
   const cambiarEtapaMasiva = (nuevaEtapa) => {
     if (!nuevaEtapa || !selIds.size) return;
     const ts = new Date().toISOString();
-    guardar({ ...data, pipeline: data.pipeline.map((o) => selIds.has(o.id) ? { ...o, etapa: nuevaEtapa, actualizada: ts, ...(nuevaEtapa === "cotizado" && !o.fechaCotizacion ? { fechaCotizacion: ts.slice(0, 10) } : {}) } : o) });
+    guardar({ ...data, pipeline: data.pipeline.map((o) => selIds.has(o.id) ? { ...o, etapa: nuevaEtapa, actualizada: ts, ...(nuevaEtapa === "cotizado" && !o.fechaCotizacion ? { fechaCotizacion: ts.slice(0, 10) } : {}), ...(nuevaEtapa === "perdido" && !o.fechaPerdido ? { fechaPerdido: ts.slice(0, 10) } : {}) } : o) });
     salirSel();
   };
   const eliminarMasivo = () => {

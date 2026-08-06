@@ -123,6 +123,7 @@ const OPP = traductor(
     traidoPorId: "traido_por_id", cotizadorId: "cotizador_id", origen: "origen",
     zonaReasignar: "zona_reasignar", numCliente: "num_cliente", montoSinIva: "monto_sin_iva", facturas: "facturas",
     costo: "costo", compras: "compras", sucursal: "sucursal",
+    archivos: "archivos", fechaPerdido: "fecha_perdido",
   },
   ["monto", "montoOrig", "margen", "comisionPct",
    "fechaCotizacion", "fechaOC", "fechaPedido", "fechaFactura", "fechaAccion"]
@@ -395,6 +396,31 @@ async function borrarFaltantes(tabla, ownerCol, uid, idsVivos) {
     const { error } = await sb.from(tabla).delete().in("id", aBorrar.slice(i, i + 150));
     if (error) throw error;
   }
+}
+
+// ─────────────────── archivos (Supabase Storage) ─────────────────
+const BUCKET_ARCHIVOS = "archivos-oportunidades";
+
+export async function subirArchivoOpp(oppId, file) {
+  const limpio = (file.name || "archivo").replace(/[^\w.\-]+/g, "_");
+  const path = `${oppId}/${Date.now()}-${limpio}`;
+  const { error } = await sb.storage.from(BUCKET_ARCHIVOS)
+    .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
+  if (error) throw error;
+  return { path, nombre: file.name || limpio, tipo: file.type || "", tamano: file.size || 0, subido: new Date().toISOString() };
+}
+
+export async function urlArchivoOpp(path) {
+  const { data, error } = await sb.storage.from(BUCKET_ARCHIVOS).createSignedUrl(path, 1800);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function borrarArchivoOpp(paths) {
+  const arr = Array.isArray(paths) ? paths : [paths];
+  if (!arr.length) return;
+  const { error } = await sb.storage.from(BUCKET_ARCHIVOS).remove(arr);
+  if (error) throw error;
 }
 
 // ─────────────────── traducción de errores de auth ───────────────

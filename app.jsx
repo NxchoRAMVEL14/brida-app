@@ -645,7 +645,7 @@ const SYNC_TXT = {
 };
 const SYNC_COL = { local: "#8FA0B3", sincronizando: "#DE9B10", sincronizado: "#2F9467", offline: "#DE9B10", error: "#C94848" };
 
-function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
+function CuentaSheet({ sesion, sync, syncErr, onSalir, onCerrar }) {
   const [modo, setModo] = useState("entrar");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -671,6 +671,14 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
             {sync === "sincronizado" ? <Cloud size={18} style={{ color: SYNC_COL[sync] }} /> : sync === "local" ? <CloudOff size={18} style={{ color: SYNC_COL[sync] }} /> : <Cloud size={18} style={{ color: SYNC_COL[sync] }} />}
             <div className="text-sm" style={{ color: C.tinta }}>{SYNC_TXT[sync]}</div>
           </div>
+
+          {sync === "error" && syncErr ? (
+            <div className="rounded-xl border p-3 text-xs" style={{ borderColor: C.rojo, background: "#fff", color: C.rojo }}>
+              <div className="font-semibold mb-1">Detalle del error</div>
+              <div style={{ wordBreak: "break-word" }}>{syncErr}</div>
+              <div className="mt-1" style={{ color: C.dim }}>Tus datos siguen guardados en este dispositivo. Cuando se corrija, vuelven a subir solos.</div>
+            </div>
+          ) : null}
 
           {sesion ? (
             <div className="space-y-3">
@@ -923,7 +931,7 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clien
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
     fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
-    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", numCliente: opp.numCliente || "", sucursal: opp.sucursal || "", costo: opp.costo ?? "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", numCliente: opp.numCliente || "", sucursal: opp.sucursal || "",
   });
   const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
   const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false, fechaPago: "" }]);
@@ -2380,6 +2388,8 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v6.3.0 — Depuración automática de archivos de perdidas: los archivos adjuntos de una oportunidad marcada como Perdida se borran solos cuando la perdida cumple 6 meses, para no ocupar espacio en la nube con lo que ya no se retoma. Se conservan íntegros los de todo lo demás (activas, con OC, facturadas) por si se necesitan para garantías o recompras. Cuando se depura una perdida, se deja una nota en su ficha indicando la fecha y el motivo, para que quede claro que no fue una pérdida accidental.",
+    "v6.2.0 — Corrección del autoborrado: si creabas una oportunidad y salías de la app antes de que terminara de subir (o si la nube estaba en rojo), al volver se borraba. Ahora, al cambiar de app se sube de inmediato lo pendiente, y al regresar la app primero sube lo tuyo y solo entonces baja lo de la nube: si algo falla, tus datos se quedan intactos en el dispositivo en lugar de perderse. Además, cuando la nubecita se pone roja, la pantalla de Cuenta ahora muestra el detalle del error para saber qué corregir.",
     "v6.1.1 — Corrección: las oportunidades creadas desde el formulario «Solicitud» ahora entran con la etapa Oportunidad entrante bien puesta y se sincronizan solas con la nube (antes quedaban con la etapa en blanco y no subían hasta abrirlas y guardarlas a mano).",
     "v6.1.0 — Archivos en la solicitud entrante: al registrar una oportunidad puedes adjuntar varios archivos (planos, fotos, Excel, Word, PDF). Las fotos se comprimen solas para ahorrar espacio; todo se sube a la nube y luego se ve y descarga desde la ficha de la oportunidad. Además se registra la fecha en que una oportunidad se marca como Perdida, para depurar sus archivos automáticamente más adelante.",
     "v6.0.0 — Formulario de solicitud entrante (como en Monday): botón «Solicitud» en el pipeline abre un formulario con tipo, cliente (por nombre o número), nombre, descripción, correo, teléfono, solicitante, sucursal y medio de recepción. Al enviarlo entra directo como oportunidad entrante y guarda al solicitante como contacto. Además: filtro por sucursal en el pipeline.",
@@ -2545,7 +2555,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.1.1 · Brida</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v6.3.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -2786,10 +2796,14 @@ export default function App() {
   const [selMode, setSelMode] = useState(false);
   const [selIds, setSelIds] = useState(() => new Set());
   const [sync, setSync] = useState("local");
+  const [syncErr, setSyncErr] = useState("");
   const dataRef = useRef(null);
   const sesionRef = useRef(null);
   const pushTimerRef = useRef(null);
   const syncIniRef = useRef(false);
+  const pendienteRef = useRef(false);        // hay cambios locales aún NO confirmados en la nube
+  const ultimoRef = useRef(null);            // último estado listo para subir
+  const subirRef = useRef(async () => true); // flush inmediato (se define junto a guardar)
 
   useEffect(() => {
     try {
@@ -2820,14 +2834,35 @@ export default function App() {
     setData(conTs);
     try { localStorage.setItem("brida-v1", JSON.stringify(conTs)); } catch { setSinStorage(true); }
     if (sesionRef.current) {
-      setSync("sincronizando");
+      ultimoRef.current = conTs;          // recordar SIEMPRE lo último por subir
+      pendienteRef.current = true;        // marcar que hay algo sin confirmar en la nube
+      setSync("sincronizando"); setSyncErr("");
       clearTimeout(pushTimerRef.current);
-      pushTimerRef.current = setTimeout(async () => {
-        try { await subirNube(sesionRef.current.user.id, conTs); setSync("sincronizado"); }
-        catch { setSync(navigator.onLine ? "error" : "offline"); }
-      }, 1200);
+      pushTimerRef.current = setTimeout(() => { subirRef.current(); }, 1200);
     }
   };
+
+  // Sube de inmediato lo último pendiente (sin esperar el debounce). Devuelve
+  // true si la nube quedó al día y false si falló. Clave para el arreglo del
+  // autoborrado: si falla, NO se debe sobrescribir lo local con una nube incompleta.
+  const subirAhora = async () => {
+    clearTimeout(pushTimerRef.current);
+    const s = sesionRef.current;
+    if (!s || !pendienteRef.current) return true;   // sin sesión o nada pendiente: al día
+    const snap = ultimoRef.current || dataRef.current;
+    setSync("sincronizando");
+    try {
+      await subirNube(s.user.id, snap);
+      pendienteRef.current = false;
+      setSync("sincronizado"); setSyncErr("");
+      return true;
+    } catch (e) {
+      setSync(navigator.onLine ? "error" : "offline");
+      setSyncErr((e && e.message) || String(e));
+      return false;
+    }
+  };
+  subirRef.current = subirAhora;
 
   // Sesión actual + escucha de cambios
   useEffect(() => {
@@ -2866,10 +2901,16 @@ export default function App() {
     })();
   }, [sesion, data]);
 
-  // Al volver a la app o recuperar conexión, jala lo más reciente de la nube
+  // Al volver a la app o recuperar conexión: PRIMERO sube lo pendiente (para no
+  // perder lo recién capturado) y SOLO si la nube quedó al día baja lo más
+  // reciente. Antes bajaba siempre y borraba lo local no sincronizado (autoborrado).
   useEffect(() => {
     const jalar = async () => {
       const s = sesionRef.current; if (!s) return;
+      // 1) Empujar lo local pendiente. Si falla, no tocar lo local y salir.
+      const alDia = await subirRef.current();
+      if (!alDia) return;
+      // 2) Ya sincronizados: bajar lo más reciente de la nube.
       try {
         const fila = await leerNube(s.user.id);
         const nube = fila && fila.data;
@@ -2885,11 +2926,57 @@ export default function App() {
         }
       } catch {}
     };
-    const onVis = () => { if (document.visibilityState === "visible") jalar(); };
+    const onVis = () => {
+      if (document.visibilityState === "visible") jalar();
+      else subirRef.current();   // al mandar la app a segundo plano, guarda YA lo pendiente
+    };
+    const onHide = () => { subirRef.current(); };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("online", jalar);
-    return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("online", jalar); };
+    window.addEventListener("pagehide", onHide);
+    return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("online", jalar); window.removeEventListener("pagehide", onHide); };
   }, []);
+
+  // ── Purga de archivos de oportunidades PERDIDAS con > 6 meses ──────
+  // Política acordada: se conservan los archivos de lo ganado/facturado
+  // (sirven para garantías o recompras) y solo se borran los de las
+  // PERDIDAS pasados 6 meses desde que se marcaron como tal. Corre una
+  // vez por sesión, unos segundos después de entrar (para que ya haya
+  // sincronizado la nube). Reutiliza borrarArchivoOpp (Supabase Storage).
+  const purgaRef = useRef(false);
+  const purgarPerdidasViejas = async () => {
+    const s = sesionRef.current; if (!s) return;
+    const cur = dataRef.current; if (!cur) return;
+    const limite = new Date(); limite.setMonth(limite.getMonth() - 6);
+    const limiteStr = limite.toISOString().slice(0, 10);   // YYYY-MM-DD
+    const objetivo = (cur.pipeline || []).filter((o) =>
+      o.etapa === "perdido" && o.fechaPerdido && o.fechaPerdido < limiteStr &&
+      Array.isArray(o.archivos) && o.archivos.length > 0
+    );
+    if (!objetivo.length) return;
+    const purgados = new Set();
+    for (const o of objetivo) {
+      try {
+        const paths = (o.archivos || []).map((a) => a && a.path).filter(Boolean);
+        if (paths.length) await borrarArchivoOpp(paths);
+        purgados.add(o.id);
+      } catch (e) { console.warn("Brida · no se pudieron borrar archivos de la perdida " + o.id + ":", (e && e.message) || e); }
+    }
+    if (!purgados.size) return;
+    const hoyStr = new Date().toISOString().slice(0, 10);
+    const marca = "[Archivos depurados automáticamente el " + hoyStr + " · política: perdidas > 6 meses]";
+    const base = dataRef.current || cur;
+    const next = { ...base, pipeline: (base.pipeline || []).map((o) => purgados.has(o.id)
+      ? { ...o, archivos: [], notas: (o.notas ? o.notas + "\n" : "") + marca, actualizada: new Date().toISOString() }
+      : o) };
+    guardar(next);   // limpia el campo archivos y sincroniza a la nube
+  };
+  useEffect(() => {
+    if (!sesion || purgaRef.current) return;
+    purgaRef.current = true;
+    const t = setTimeout(() => { purgarPerdidasViejas(); }, 5000);
+    return () => clearTimeout(t);
+  }, [sesion]);
 
   const cerrarSesion = async () => { await salir(); setSync("local"); syncIniRef.current = false; setVerCuenta(false); };
 
@@ -4486,7 +4573,7 @@ export default function App() {
       })()}
 
       {verSeguimiento && <SeguimientoSheet opps={data.pipeline} onCerrar={() => setVerSeguimiento(false)} />}
-      {verCuenta && <CuentaSheet sesion={sesion} sync={sync} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
+      {verCuenta && <CuentaSheet sesion={sesion} sync={sync} syncErr={syncErr} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
       {verVisitas && <VisitasSheet visitas={data.visitas || []} opps={data.pipeline} onNueva={() => setVisitaEdit({})} onEditar={(v) => setVisitaEdit(v)} onCheckin={checkinVisita} onCerrar={() => setVerVisitas(false)} />}
       {visitaEdit !== null && <VisitaEditor visita={visitaEdit} opps={data.pipeline} onGuardar={guardarVisita} onEliminar={() => delVisita(visitaEdit.id)} onCheckin={obtenerUbicacion} onCerrar={() => setVisitaEdit(null)} />}
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
